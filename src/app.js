@@ -42,8 +42,8 @@ app.get("/health/database", async (req, res) => {
   }
 });
 
-app.use("auth", authRoutes);
-app.use("users", userRoutes);
+app.use("/auth", authRoutes);
+app.use("/user", userRoutes);
 app.use("/api/v1/users/api-keys", apiKeyRoutes);
 app.use("/api/v1/ai", aiRoutes);
 
