@@ -30,8 +30,8 @@ if (!env.supabaseAnonKey) {
   throw new Error("SUPABASE_ANON_KEY is missing");
 }
 
-if (!env.apiKeyEncryptionSecret) {
-  throw new Error("API_KEY_ENCRYPTION_SECRET is missing");
-}
+// if (!env.apiKeyEncryptionSecret) {
+//   throw new Error("API_KEY_ENCRYPTION_SECRET is missing");
+// }
 
 export default env;
