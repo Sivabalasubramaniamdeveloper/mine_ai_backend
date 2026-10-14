@@ -103,13 +103,107 @@ const calculateRelevanceScore = (title, query) => {
 // -----------------------------------------------------------------
 // 1. Amazon India (Accurate Model Scoring & Fallbacks)
 // -----------------------------------------------------------------
+// export const scrapeAmazonPrice = async (rawQuery) => {
+//   const query = cleanSearchQuery(rawQuery);
+//   const searchUrl = `https://www.amazon.in/s?k=${encodeURIComponent(query)}`;
+
+//   try {
+  
+//  const { data: html } = await axios.get(searchUrl, {
+//       headers: AMAZON_HEADERS,
+//       timeout: 10000,
+//     });
+    
+   
+
+//     const $ = cheerio.load(html);
+//     const candidates = [];
+
+//     $('[data-component-type="s-search-result"]').each((_, el) => {
+//       const isSponsored =
+//         $(el).find(".puis-sponsored-label-text, .s-sponsored-label-text")
+//           .length > 0;
+
+//       const titleCandidate =
+//         $(el).find("h2 a span").first().text().trim() ||
+//         $(el).find("h2 span").first().text().trim();
+
+//       const priceCandidate =
+//         $(el).find(".a-price .a-offscreen").first().text().trim() ||
+//         $(el).find(".a-price-whole").first().text().trim();
+
+//       const hrefCandidate = $(el).find("h2 a").attr("href");
+//       const imgCandidate = $(el).find(".s-image").attr("src");
+//       const ratingCandidate = $(el).find(".a-icon-alt").first().text().trim();
+
+//       const parsedPrice = parseNumericPrice(priceCandidate);
+
+//       if (titleCandidate && parsedPrice && parsedPrice > 100) {
+//         const relevance = calculateRelevanceScore(titleCandidate, query);
+
+//         candidates.push({
+//           title: titleCandidate,
+//           price: parsedPrice,
+//           link: hrefCandidate
+//             ? hrefCandidate.startsWith("http")
+//               ? hrefCandidate
+//               : `https://www.amazon.in${hrefCandidate}`
+//             : searchUrl,
+//           image: imgCandidate || null,
+//           rating: ratingCandidate ? ratingCandidate.split(" ")[0] : null,
+//           isSponsored,
+//           relevance,
+//         });
+//       }
+//     });
+
+//     candidates.sort((a, b) => {
+//       if (a.isSponsored !== b.isSponsored) {
+//         return a.isSponsored ? 1 : -1;
+//       }
+//       return b.relevance - a.relevance;
+//     });
+
+//     const bestCandidate = candidates.length > 0 ? candidates[0] : null;
+
+//     return {
+//       store: "Amazon",
+//       found: bestCandidate !== null,
+//       title: bestCandidate ? bestCandidate.title : query,
+//       price: bestCandidate ? bestCandidate.price : null,
+//       currency: "INR",
+//       formattedPrice: bestCandidate
+//         ? `₹${bestCandidate.price.toLocaleString("en-IN")}`
+//         : "Unavailable",
+//       rating: bestCandidate ? bestCandidate.rating : null,
+//       productUrl: bestCandidate ? bestCandidate.link : searchUrl,
+//       imageUrl: bestCandidate ? bestCandidate.image : null,
+//     };
+//   } catch (err) {
+//     console.error("Amazon Scraping Error:", err.message);
+//     return {
+//       store: "Amazon",
+//       found: false,
+//       title: query,
+//       price: null,
+//       currency: "INR",
+//       formattedPrice: "Unavailable",
+//       rating: null,
+//       productUrl: searchUrl,
+//       imageUrl: null,
+//     };
+//   }
+// };
 export const scrapeAmazonPrice = async (rawQuery) => {
   const query = cleanSearchQuery(rawQuery);
-  const searchUrl = `https://www.amazon.in/s?k=${encodeURIComponent(query)}`;
+  const targetAmazonUrl = `https://www.amazon.in/s?k=${encodeURIComponent(query)}`;
 
   try {
-    if (process.env.SCRAPINGANT_API_KEY) {
-      const { data: html } = await axios.get("https://api.scrapingant.com/v2/general", {
+    let html;
+
+    // Use ScrapingAnt if the API key is present (production on Railway)
+    // if (process.env.SCRAPINGANT_API_KEY) {
+      const response = await axios.get("https://api.scrapingant.com/v2/general", {
         params: {
           "x-api-key": process.env.SCRAPINGANT_API_KEY,
           url: targetAmazonUrl,
@@ -118,79 +212,71 @@ export const scrapeAmazonPrice = async (rawQuery) => {
         },
         timeout: 25000,
       });
-    }else{
- const { data: html } = await axios.get(searchUrl, {
-      headers: AMAZON_HEADERS,
-      timeout: 10000,
-    });
-    }
-   
+      html = response.data;
+    // } else {
+      // Local fallback using direct request
+    //   const response = await axios.get(targetAmazonUrl, {
+    //     headers: AMAZON_HEADERS,
+    //     timeout: 10000,
+    //   });
+    //   html = response.data;
+    // }
 
     const $ = cheerio.load(html);
     const candidates = [];
 
-    $('[data-component-type="s-search-result"]').each((_, el) => {
-      const isSponsored =
-        $(el).find(".puis-sponsored-label-text, .s-sponsored-label-text")
-          .length > 0;
+    $('[data-component-type="s-search-result"], .s-result-item[data-asin]').each((_, el) => {
+      const asin = $(el).attr("data-asin");
+      if (!asin || asin.trim() === "") return;
 
-      const titleCandidate =
+      const isSponsored =
+        $(el).find(".puis-sponsored-label-text, .s-sponsored-label-text").length > 0;
+
+      const title =
         $(el).find("h2 a span").first().text().trim() ||
         $(el).find("h2 span").first().text().trim();
 
-      const priceCandidate =
+      const priceText =
         $(el).find(".a-price .a-offscreen").first().text().trim() ||
         $(el).find(".a-price-whole").first().text().trim();
 
-      const hrefCandidate = $(el).find("h2 a").attr("href");
-      const imgCandidate = $(el).find(".s-image").attr("src");
-      const ratingCandidate = $(el).find(".a-icon-alt").first().text().trim();
+      const href = $(el).find("h2 a").attr("href");
+      const img = $(el).find(".s-image").attr("src");
+      const parsedPrice = parseNumericPrice(priceText);
 
-      const parsedPrice = parseNumericPrice(priceCandidate);
-
-      if (titleCandidate && parsedPrice && parsedPrice > 100) {
-        const relevance = calculateRelevanceScore(titleCandidate, query);
-
+      if (title && parsedPrice && parsedPrice > 100) {
         candidates.push({
-          title: titleCandidate,
+          title,
           price: parsedPrice,
-          link: hrefCandidate
-            ? hrefCandidate.startsWith("http")
-              ? hrefCandidate
-              : `https://www.amazon.in${hrefCandidate}`
-            : searchUrl,
-          image: imgCandidate || null,
-          rating: ratingCandidate ? ratingCandidate.split(" ")[0] : null,
+          link: href ? (href.startsWith("http") ? href : `https://www.amazon.in${href}`) : targetAmazonUrl,
+          image: img || null,
           isSponsored,
-          relevance,
+          relevance: calculateRelevanceScore(title, query, parsedPrice),
         });
       }
     });
 
     candidates.sort((a, b) => {
-      if (a.isSponsored !== b.isSponsored) {
-        return a.isSponsored ? 1 : -1;
-      }
-      return b.relevance - a.relevance;
+      if (b.relevance !== a.relevance) return b.relevance - a.relevance;
+      return (a.isSponsored ? 1 : 0) - (b.isSponsored ? 1 : 0);
     });
 
     const bestCandidate = candidates.length > 0 ? candidates[0] : null;
 
     return {
       store: "Amazon",
-      found: bestCandidate !== null,
+      found: bestCandidate !== null && bestCandidate.relevance > -20,
       title: bestCandidate ? bestCandidate.title : query,
       price: bestCandidate ? bestCandidate.price : null,
       currency: "INR",
       formattedPrice: bestCandidate
         ? `₹${bestCandidate.price.toLocaleString("en-IN")}`
         : "Unavailable",
-      rating: bestCandidate ? bestCandidate.rating : null,
-      productUrl: bestCandidate ? bestCandidate.link : searchUrl,
+      productUrl: bestCandidate ? bestCandidate.link : targetAmazonUrl,
       imageUrl: bestCandidate ? bestCandidate.image : null,
     };
   } catch (err) {
-    console.error("Amazon Scraping Error:", err.message);
+    console.error("ScrapingAnt Amazon Error:", err.response?.data || err.message);
     return {
       store: "Amazon",
       found: false,
@@ -198,13 +284,11 @@ export const scrapeAmazonPrice = async (rawQuery) => {
       price: null,
       currency: "INR",
       formattedPrice: "Unavailable",
-      rating: null,
-      productUrl: searchUrl,
+      productUrl: targetAmazonUrl,
       imageUrl: null,
     };
   }
 };
-
 // -----------------------------------------------------------------
 // 2. Flipkart (Restored Previous Working Parsing Logic)
 // -----------------------------------------------------------------
