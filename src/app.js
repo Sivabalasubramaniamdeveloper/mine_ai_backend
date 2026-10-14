@@ -6,6 +6,7 @@ import apiKeyRoutes from "./routes/apiKey.routes.js";
 import aiRoutes from "./routes/ai.routes.js";
 import weatherRoutes from "./routes/weather.routes.js";
 import priceRoutes from "./routes/price.routes.js";
+import productSearchRoutes from "./routes/productSearch.routes.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
 
 const app = express();
@@ -50,6 +51,7 @@ app.use("/api/v1/users/api-keys", apiKeyRoutes);
 app.use("/api/v1/ai", aiRoutes);
 app.use("/api/v1/weather", weatherRoutes);
 app.use("/api/v1/prices", priceRoutes);
+app.use("/api/v1/products", productSearchRoutes);
 
 app.use(errorMiddleware);
 
