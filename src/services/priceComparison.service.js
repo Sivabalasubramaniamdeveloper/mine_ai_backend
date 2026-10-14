@@ -202,7 +202,7 @@ export const scrapeAmazonPrice = async (rawQuery) => {
     let html;
 
     // Use ScrapingAnt if the API key is present (production on Railway)
-    // if (process.env.SCRAPINGANT_API_KEY) {
+    if (process.env.SCRAPINGANT_API_KEY) {
       const response = await axios.get("https://api.scrapingant.com/v2/general", {
         params: {
           "x-api-key": process.env.SCRAPINGANT_API_KEY,
@@ -213,14 +213,14 @@ export const scrapeAmazonPrice = async (rawQuery) => {
         timeout: 25000,
       });
       html = response.data;
-    // } else {
+    } else {
       // Local fallback using direct request
-    //   const response = await axios.get(targetAmazonUrl, {
-    //     headers: AMAZON_HEADERS,
-    //     timeout: 10000,
-    //   });
-    //   html = response.data;
-    // }
+      const response = await axios.get(targetAmazonUrl, {
+        headers: AMAZON_HEADERS,
+        timeout: 10000,
+      });
+      html = response.data;
+    }
 
     const $ = cheerio.load(html);
     const candidates = [];
