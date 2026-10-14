@@ -4,6 +4,8 @@ import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import apiKeyRoutes from "./routes/apiKey.routes.js";
 import aiRoutes from "./routes/ai.routes.js";
+import weatherRoutes from "./routes/weather.routes.js";
+import priceRoutes from "./routes/price.routes.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
 
 const app = express();
@@ -43,9 +45,11 @@ app.get("/health/database", async (req, res) => {
 });
 
 app.use("/api/v1/auth", authRoutes);
-app.use("/api/v1/users", userRoutes);
+app.use("/api/v1/user", userRoutes);
 app.use("/api/v1/users/api-keys", apiKeyRoutes);
 app.use("/api/v1/ai", aiRoutes);
+app.use("/api/v1/weather", weatherRoutes);
+app.use("/api/v1/prices", priceRoutes);
 
 app.use(errorMiddleware);
 
