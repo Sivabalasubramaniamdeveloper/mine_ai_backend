@@ -108,10 +108,23 @@ export const scrapeAmazonPrice = async (rawQuery) => {
   const searchUrl = `https://www.amazon.in/s?k=${encodeURIComponent(query)}`;
 
   try {
-    const { data: html } = await axios.get(searchUrl, {
+    if (process.env.SCRAPINGANT_API_KEY) {
+      const { data: html } = await axios.get("https://api.scrapingant.com/v2/general", {
+        params: {
+          "x-api-key": process.env.SCRAPINGANT_API_KEY,
+          url: targetAmazonUrl,
+          browser: "false", // set to "true" only if HTML is empty
+          proxy_country: "IN", // Route via Indian IP for Amazon India prices
+        },
+        timeout: 25000,
+      });
+    }else{
+ const { data: html } = await axios.get(searchUrl, {
       headers: AMAZON_HEADERS,
       timeout: 10000,
     });
+    }
+   
 
     const $ = cheerio.load(html);
     const candidates = [];
