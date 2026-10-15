@@ -3,8 +3,8 @@ import env from "./env.js";
 
 const supabaseAuth = createClient(env.supabaseUrl, env.supabaseAnonKey, {
   auth: {
-    autoRefreshToken: false,
-    persistSession: false,
+    autoRefreshToken: true,
+    persistSession: true,
   },
 });
 
