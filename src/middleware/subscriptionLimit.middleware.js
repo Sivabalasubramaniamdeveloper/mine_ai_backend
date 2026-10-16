@@ -7,19 +7,18 @@ export const enforceScrapingLimit = async (req, res, next) => {
     return res.status(401).json({ success: false, message: "Unauthorized" });
   }
 
-  // 1. Get user's active plan limit
-  const { data: subData, error: subError } = await supabase
-    .from("subscriptions")
+  // Read the same plan foreign key that the subscription screen updates.
+  const { data: userData, error: userError } = await supabase
+    .from("users")
     .select("plans(tier_code, daily_web_scrapes)")
-    .eq("user_id", userId)
-    .eq("status", "active")
+    .eq("id", userId)
     .single();
 
-  if (subError || !subData) {
+  if (userError || !userData?.plans) {
     return res.status(403).json({ success: false, message: "Active plan not found" });
   }
 
-  const allowedDaily = subData.plans.daily_web_scrapes;
+  const allowedDaily = userData.plans.daily_web_scrapes;
   const today = new Date().toISOString().split("T")[0];
 
   // 2. Count today's scrape requests
