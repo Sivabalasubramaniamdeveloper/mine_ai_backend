@@ -35,3 +35,21 @@ export const updateMyProfile = async (req, res, next) => {
     next(error);
   }
 };
+
+export const getAvailablePlans = async (req, res, next) => {
+  try {
+    const plans = await userService.getAvailablePlans();
+    return res.status(200).json({ success: true, data: { plans } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateMyPlan = async (req, res, next) => {
+  try {
+    const user = await userService.updateMyPlan(req.user.id, req.body.plan_id);
+    return res.status(200).json({ success: true, data: { user } });
+  } catch (error) {
+    next(error);
+  }
+};

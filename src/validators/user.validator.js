@@ -28,3 +28,8 @@ export const updateUserSchema = z.object({
 
   phone: z.string().trim().max(20).optional(),
 });
+
+// Accept only a plan UUID; the service verifies that it exists before assigning it.
+export const updateUserPlanSchema = z.object({
+  plan_id: z.string().uuid(),
+});
