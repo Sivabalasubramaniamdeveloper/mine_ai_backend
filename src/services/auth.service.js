@@ -27,6 +27,15 @@ export const register = async (data) => {
   let settingsCreated = false;
 
   try {
+    // Resolve the Basic plan from the plans table so every user profile has a
+    // real foreign key and plan changes remain data driven.
+    const { data: basicPlan, error: planError } = await supabase
+      .from("plans")
+      .select("id")
+      .eq("tier_code", 0)
+      .single();
+    if (planError) throw new Error(`Unable to resolve the default plan: ${planError.message}`);
+
     // 1. Create Supabase Auth user
     const { data: authData, error: authError } =
       await supabase.auth.admin.createUser({
@@ -62,6 +71,7 @@ export const register = async (data) => {
       timezone,
       language: language || "en",
       credits: 100,
+      plan_id: basicPlan.id,
     });
     profileCreated = true;
     // ------------------------------------------------
