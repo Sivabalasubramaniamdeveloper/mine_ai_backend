@@ -36,6 +36,7 @@ export const updateMyProfile = async (req, res, next) => {
   }
 };
 
+// Returns plans to the authenticated client without relying on its database policies.
 export const getAvailablePlans = async (req, res, next) => {
   try {
     const plans = await userService.getAvailablePlans();
@@ -45,6 +46,7 @@ export const getAvailablePlans = async (req, res, next) => {
   }
 };
 
+// Updates only the authenticated user's plan and returns the persisted result.
 export const updateMyPlan = async (req, res, next) => {
   try {
     const user = await userService.updateMyPlan(req.user.id, req.body.plan_id);
