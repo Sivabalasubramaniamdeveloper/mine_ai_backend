@@ -93,7 +93,7 @@ export const assignUserPlan = async (userId, planId) => {
     .from("users")
     .update({ plan_id: planId })
     .eq("id", userId)
-    .select("id, credits, plan_id, plans(tier_code)")
+    .select("id, email, credits, plan_id, plans(tier_code)")
     .single();
   if (error) throw error;
   return data;

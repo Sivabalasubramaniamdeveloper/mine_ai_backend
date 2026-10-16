@@ -16,6 +16,13 @@ const env = {
   mineAiOpenAiApiKey: process.env.MINEAI_OPENAI_API_KEY,
 
   mineAiAnthropicApiKey: process.env.MINEAI_ANTHROPIC_API_KEY,
+
+  mailHost: process.env.MAIL_HOST || "smtp.gmail.com",
+  mailPort: Number(process.env.MAIL_PORT || 465),
+  mailUser: process.env.MAIL_USER || "mineai.support@gmail.com",
+  mailPassword: process.env.MAIL_PASSWORD,
+  mailFrom: process.env.MAIL_FROM || "MineAI <mineai.support@gmail.com>",
+  supportEmail: process.env.SUPPORT_EMAIL || "mineai.support@gmail.com",
 };
 
 if (!env.supabaseUrl) {

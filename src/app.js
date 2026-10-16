@@ -20,6 +20,11 @@ app.get("/health", (req, res) => {
   });
 });
 
+// Provides a branded browser landing page when an email confirmation opens outside the app.
+app.get("/auth/verified", (_req, res) => {
+  res.type("html").send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Email verified · MineAI</title><style>body{margin:0;background:#f4f7ff;color:#202124;font:16px Arial,sans-serif;min-height:100vh;display:grid;place-items:center}.card{max-width:440px;margin:24px;padding:36px;background:white;border-radius:20px;text-align:center;box-shadow:0 12px 40px #17255418}h1{color:#2357d8}p{line-height:1.6;color:#4b5563}.mark{font-size:52px}.button{display:inline-block;margin-top:12px;padding:13px 20px;border-radius:12px;background:#2357d8;color:white;text-decoration:none}</style></head><body><main class="card"><div class="mark" aria-hidden="true">✓</div><h1>Email verified</h1><p>Your MineAI account is ready. Return to the MineAI app and sign in to continue.</p><a class="button" href="mineai://auth-callback/email-confirmed">Open MineAI</a></main></body></html>`);
+});
+
 app.get("/health/database", async (req, res) => {
   try {
     const { error } = await supabase.from("profile").select("id").limit(1);

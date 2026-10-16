@@ -2,6 +2,7 @@ import supabase from "../config/supabase.js";
 import { createUserProfile } from "../repositories/user.repository.js";
 import { createUserSettings } from "../repositories/user-settings.repository.js";
 import supabaseAuth from "../config/supabase-auth.js";
+import { sendWelcomeEmails } from "./email.service.js";
 
 // Creates the app profile after Supabase confirms the user can authenticate.
 const ensureApplicationProfile = async (authUser) => {
@@ -43,6 +44,10 @@ const ensureApplicationProfile = async (authUser) => {
     // A short user ID suffix keeps generated usernames unique across signups.
     try {
       await createUserProfile(profile);
+      // A verified first login creates the profile and sends one welcome/Basic-plan email pair.
+      void sendWelcomeEmails(authUser.email).catch((error) =>
+        console.error("Could not send account welcome emails:", error.message),
+      );
     } catch (error) {
       // Concurrent first logins can race on the same user ID; accept only that completed insert.
       if (error.code !== "23505") throw error;
