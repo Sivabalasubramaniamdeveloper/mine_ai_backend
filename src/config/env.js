@@ -9,6 +9,8 @@ const env = {
 
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
 
+  supabaseBucket :process.env.SUPABASE_OTT_BUCKET,
+
   apiKeyEncryptionSecret: process.env.API_KEY_ENCRYPTION_SECRET,
 
   mineAiGeminiApiKey: process.env.MINEAI_GEMINI_API_KEY,
@@ -39,6 +41,10 @@ if (!env.supabaseAnonKey) {
 
 if (!env.apiKeyEncryptionSecret) {
   throw new Error("API_KEY_ENCRYPTION_SECRET is missing");
+}
+
+if (!env.supabaseBucket) {
+  throw new Error("supabaseBucket is missing");
 }
 
 export default env;
