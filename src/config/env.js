@@ -19,10 +19,10 @@ const env = {
 
   mineAiAnthropicApiKey: process.env.MINEAI_ANTHROPIC_API_KEY,
 
-  mailHost: process.env.MAIL_HOST || "smtp.gmail.com",
+  mailHost: (process.env.MAIL_HOST || "smtp.gmail.com").trim(),
   mailPort: Number(process.env.MAIL_PORT || 465),
-  mailUser: process.env.MAIL_USER || "mineai.support@gmail.com",
-  mailPassword: process.env.MAIL_PASSWORD,
+  mailUser: (process.env.MAIL_USER || "mineai.support@gmail.com").trim(),
+  mailPassword: process.env.MAIL_PASSWORD ? process.env.MAIL_PASSWORD.trim() : undefined,
   mailFrom: process.env.MAIL_FROM || "MineAI <mineai.support@gmail.com>",
   supportEmail: process.env.SUPPORT_EMAIL || "mineai.support@gmail.com",
 };
