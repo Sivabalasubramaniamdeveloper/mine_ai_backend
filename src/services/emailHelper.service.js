@@ -45,7 +45,7 @@ export const generateEmail = async ({
   userId,
   instructions,
   tone = "Professional",
-  model = "gemini-2.5-flash",
+  model = "gemini-3.8-flash",
 }) => {
   if (!instructions || !instructions.trim()) {
     const err = new Error("Email instructions/prompt is required");
@@ -310,21 +310,33 @@ export const sendDirectEmail = async ({
 
   const cleanPass = decryptedPassword.replace(/\s+/g, "");
 
+  // Use the email stored in key_name if it is a valid email, else account email
+  const senderEmail = (keyRow.key_name && keyRow.key_name.includes("@"))
+    ? keyRow.key_name.trim()
+    : userEmail;
+
   // Create transporter for this user's Gmail
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
-      user: userEmail,
+      user: senderEmail,
       pass: cleanPass,
     },
   });
 
   const mailOptions = {
-    from: `"${user?.full_name || "MineAI User"}" <${userEmail}>`,
+    from: `"${user?.full_name || "MineAI User"}" <${senderEmail}>`,
+    sender: senderEmail,
+    replyTo: senderEmail,
     to: to.trim(),
     subject: subject.trim(),
     text: body,
-    html: `<div style="font-family: Arial, sans-serif; font-size: 15px; color: #1e293b; line-height: 1.6; white-space: pre-wrap;">${body.replace(/\n/g, "<br>")}</div>`,
+    headers: {
+      "X-Mailer": "MineAI Email Assistant",
+      "X-Priority": "3",
+      "Importance": "Normal",
+    },
+    html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;color:#1e293b;line-height:1.65;"><div style="white-space:pre-wrap;">${body.replace(/\n/g, "<br>")}</div></body></html>`,
   };
 
   if (cc && cc.trim()) {

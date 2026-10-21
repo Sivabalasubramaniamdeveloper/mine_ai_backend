@@ -15,6 +15,8 @@ export const getMyProfile = async (userId) => {
     user.credits = creditStatus.credits;
     user.daily_credit_limit = creditStatus.dailyLimit;
     user.credits_used_today = creditStatus.usedToday;
+    user.credits_recharge_countdown = creditStatus.rechargeCountdown;
+    user.next_reset_at = creditStatus.nextResetAt;
   } catch (err) {
     console.warn("[UserService] Failed to sync credits:", err.message);
   }

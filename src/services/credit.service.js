@@ -53,6 +53,13 @@ export const getUserCreditsStatus = async (userId) => {
       .eq("id", userId);
   }
 
+  // Calculate exact time until midnight UTC recharge
+  const now = new Date();
+  const nextReset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+  const diffMs = nextReset.getTime() - now.getTime();
+  const rechargeHours = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60)));
+  const rechargeMinutes = Math.max(0, Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60)));
+
   return {
     userId,
     credits: remainingCredits,
@@ -60,6 +67,10 @@ export const getUserCreditsStatus = async (userId) => {
     usedToday,
     planName: plan.name,
     tierCode: plan.tier_code,
+    nextResetAt: nextReset.toISOString(),
+    rechargeInHours: rechargeHours,
+    rechargeInMinutes: rechargeMinutes,
+    rechargeCountdown: `${rechargeHours}h ${rechargeMinutes}m`,
   };
 };
 

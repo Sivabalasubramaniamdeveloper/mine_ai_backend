@@ -71,23 +71,43 @@ export const sendMail = async ({ to, subject, title, message }) => {
   const safeMessage = String(message).replace(/[<>]/g, "");
 
   try {
+    const msgId = `<${Date.now()}.${Math.random().toString(36).substring(2, 10)}@mineai.app>`;
+
     const info = await client.sendMail({
       from: env.mailFrom,
+      sender: env.mailUser,
+      replyTo: env.supportEmail || env.mailUser,
       to,
       subject,
-      text: `${title}\n\n${message}\n\nMineAI Support: ${env.supportEmail}`,
+      text: `${safeTitle}\n\n${safeMessage}\n\nMineAI Support: ${env.supportEmail}`,
+      messageId: msgId,
+      headers: {
+        "X-Mailer": "MineAI Email Engine",
+        "X-Priority": "3",
+        "Importance": "Normal",
+      },
       html: `
-        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:32px auto;padding:32px;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,0.05)">
-          <div style="display:flex;align-items:center;margin-bottom:24px">
-            <h2 style="color:#2357d8;margin:0;font-size:24px;font-weight:700">MineAI</h2>
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>${safeTitle}</title>
+        </head>
+        <body style="margin:0;padding:24px;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+          <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;padding:32px;box-shadow:0 4px 12px rgba(0,0,0,0.04);">
+            <div style="margin-bottom:20px;">
+              <h2 style="color:#2357d8;margin:0;font-size:22px;font-weight:700;">MineAI</h2>
+            </div>
+            <h1 style="color:#0f172a;font-size:18px;font-weight:600;margin:0 0 16px 0;">${safeTitle}</h1>
+            <div style="color:#334155;line-height:1.65;font-size:15px;margin-bottom:24px;white-space:pre-wrap;">${safeMessage}</div>
+            <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;" />
+            <p style="color:#64748b;font-size:12px;margin:0;">
+              MineAI Support: <a href="mailto:${env.supportEmail}" style="color:#2357d8;text-decoration:none;">${env.supportEmail}</a>
+            </p>
           </div>
-          <h1 style="color:#0f172a;font-size:20px;font-weight:600;margin-bottom:16px">${safeTitle}</h1>
-          <p style="color:#334155;line-height:1.6;font-size:15px;margin-bottom:24px">${safeMessage}</p>
-          <hr style="border:none;border-top:1px solid #e2e8f0;margin:28px 0" />
-          <p style="color:#64748b;font-size:13px;margin:0">
-            MineAI Support: <a href="mailto:${env.supportEmail}" style="color:#2357d8;text-decoration:none">${env.supportEmail}</a>
-          </p>
-        </div>
+        </body>
+        </html>
       `,
     });
 

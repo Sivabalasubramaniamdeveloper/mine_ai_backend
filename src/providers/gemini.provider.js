@@ -5,8 +5,15 @@ export const generateGeminiResponse = async ({ apiKey, model, messages }) => {
     throw new Error("Gemini API key is required");
   }
 
-  if (!model) {
-    throw new Error("Gemini model is required");
+  // Map outdated/deprecated model names to the current active Gemini model
+  let targetModel = model;
+  if (
+    !targetModel ||
+    targetModel.includes("1.5") ||
+    targetModel.includes("2.0") ||
+    targetModel.includes("2.5")
+  ) {
+    targetModel = "gemini-3.8-flash";
   }
 
   const ai = new GoogleGenAI({
@@ -15,7 +22,6 @@ export const generateGeminiResponse = async ({ apiKey, model, messages }) => {
 
   const contents = messages.map((message) => ({
     role: message.role === "assistant" ? "model" : "user",
-
     parts: [
       {
         text: message.content,
@@ -24,10 +30,32 @@ export const generateGeminiResponse = async ({ apiKey, model, messages }) => {
   }));
 
   try {
-    const response = await ai.models.generateContent({
-      model,
-      contents,
-    });
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: targetModel,
+        contents,
+      });
+    } catch (firstErr) {
+      // If requested model wasn't found, auto-fallback to gemini-3.8-flash
+      if (
+        (firstErr?.message?.includes("NOT_FOUND") ||
+          firstErr?.message?.includes("not found") ||
+          firstErr?.message?.includes("no longer available")) &&
+        targetModel !== "gemini-3.8-flash"
+      ) {
+        console.warn(
+          `[GeminiProvider] Model ${targetModel} not found, falling back to gemini-3.8-flash`,
+        );
+        targetModel = "gemini-3.8-flash";
+        response = await ai.models.generateContent({
+          model: targetModel,
+          contents,
+        });
+      } else {
+        throw firstErr;
+      }
+    }
 
     return {
       text: response.text || "",

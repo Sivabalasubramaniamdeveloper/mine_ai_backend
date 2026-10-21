@@ -11,7 +11,7 @@ import { sendMail } from "./email.service.js";
 export const extractTask = async ({
   userId,
   prompt,
-  model = "gemini-2.5-flash",
+  model = "gemini-3.8-flash",
 }) => {
   if (!prompt || !prompt.trim()) {
     const err = new Error("Voice/Text prompt is required");
