@@ -6,8 +6,18 @@ import {
 } from "../repositories/user.repository.js";
 import { sendPlanChangedEmail } from "./email.service.js";
 
+import { getUserCreditsStatus } from "./credit.service.js";
+
 export const getMyProfile = async (userId) => {
   const user = await getUserProfileById(userId);
+  try {
+    const creditStatus = await getUserCreditsStatus(userId);
+    user.credits = creditStatus.credits;
+    user.daily_credit_limit = creditStatus.dailyLimit;
+    user.credits_used_today = creditStatus.usedToday;
+  } catch (err) {
+    console.warn("[UserService] Failed to sync credits:", err.message);
+  }
 
   return user;
 };
