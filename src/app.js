@@ -8,6 +8,8 @@ import weatherRoutes from "./routes/weather.routes.js";
 import priceRoutes from "./routes/price.routes.js";
 import ottRoutes from "./routes/ott.routes.js";
 import productSearchRoutes from "./routes/productSearch.routes.js";
+import emailHelperRoutes from "./routes/emailHelper.routes.js";
+import taskRoutes from "./routes/task.routes.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
 
 const app = express();
@@ -59,6 +61,8 @@ app.use("/api/v1/weather", weatherRoutes);
 app.use("/api/v1/prices", priceRoutes);
 app.use("/api/v1/products", productSearchRoutes);
 app.use("/api/v1/ott", ottRoutes);
+app.use("/api/v1/email-helper", emailHelperRoutes);
+app.use("/api/v1/tasks", taskRoutes);
 
 app.use(errorMiddleware);
 

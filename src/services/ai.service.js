@@ -10,6 +10,7 @@ import {
 } from "../repositories/message.repository.js";
 
 import { resolveApiKey } from "./keyResolver.service.js";
+import { consumeCredits } from "./credit.service.js";
 
 import { generateGeminiResponse } from "../providers/gemini.provider.js";
 
@@ -82,6 +83,13 @@ export const chat = async ({
   apiKeyId = null,
 }) => {
   const startedAt = Date.now();
+
+  // Enforce and consume credits
+  const creditStatus = await consumeCredits({
+    userId,
+    amount: 10,
+    actionType: "chat",
+  });
 
   /*
    * 1. Resolve provider
@@ -245,7 +253,7 @@ export const chat = async ({
     inputTokens: aiResponse.inputTokens,
     outputTokens: aiResponse.outputTokens,
     totalTokens: aiResponse.totalTokens,
-    creditsUsed: 0,
+    creditsUsed: 10,
     responseTimeMs,
     status: "success",
     apiKeySource: keyData.source,
@@ -260,6 +268,7 @@ export const chat = async ({
 
   return {
     session_id: session.id,
+    credits_left: creditStatus.creditsLeft,
 
     message: {
       id: assistantMessage.id,

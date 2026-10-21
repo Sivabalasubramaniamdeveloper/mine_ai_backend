@@ -6,11 +6,14 @@ import { updateApiKeySchema } from "../validators/apiKey.validator.js";
 import {
   addApiKey,
   listApiKeys,
+  listProviders,
   removeApiKey,
   updateApiKey,
 } from "../controllers/apiKey.controller.js";
 
 const router = Router();
+
+router.get("/providers", authenticate, listProviders);
 
 router.post("/", authenticate, validate(createApiKeySchema), addApiKey);
 

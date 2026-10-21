@@ -1,5 +1,21 @@
 import * as apiKeyService from "../services/apiKey.service.js";
 
+export const listProviders = async (_req, res, next) => {
+  try {
+    const providers = await apiKeyService.getProviders();
+
+    return res.status(200).json({
+      success: true,
+      message: "AI providers fetched successfully",
+      data: {
+        providers,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const addApiKey = async (req, res, next) => {
   try {
     const apiKey = await apiKeyService.addApiKey(req.user.id, req.body);
