@@ -120,7 +120,17 @@ export const removeApiKey = async (userId, keyId) => {
 
 export const updateApiKey = async (userId, keyId, isActive) => {
   // Make sure the key belongs to this user
-  await getApiKeyById(userId, keyId);
+  const keyRecord = await getApiKeyById(userId, keyId);
+
+  // If activating this key, deactivate any other keys for this user and provider
+  if (isActive && keyRecord.provider_id) {
+    await supabase
+      .from("user_api_keys")
+      .update({ is_active: false })
+      .eq("user_id", userId)
+      .eq("provider_id", keyRecord.provider_id)
+      .neq("id", keyId);
+  }
 
   const updatedKey = await updateApiKeyStatus(userId, keyId, isActive);
 

@@ -24,7 +24,7 @@ export const updateUserSchema = z.object({
 
   language: z.string().trim().min(2).max(10).optional(),
 
-  avatar_url: z.string().url().optional(),
+  avatar_url: z.string().optional(),
 
   phone: z.string().trim().max(20).optional(),
 });

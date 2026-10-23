@@ -43,6 +43,7 @@ const getSmtpProviderId = async () => {
  */
 export const generateEmail = async ({
   userId,
+  userName = null,
   instructions,
   tone = "Professional",
   model = "gemini-3.8-flash",
@@ -51,6 +52,17 @@ export const generateEmail = async ({
     const err = new Error("Email instructions/prompt is required");
     err.statusCode = 400;
     throw err;
+  }
+
+  // Resolve sender's name
+  let senderName = userName;
+  if (!senderName) {
+    const { data: userRow } = await supabase
+      .from("users")
+      .select("full_name, email")
+      .eq("id", userId)
+      .maybeSingle();
+    senderName = userRow?.full_name || (userRow?.email ? userRow.email.split("@")[0] : "User");
   }
 
   // 1. Consume 20 credits
@@ -66,18 +78,20 @@ export const generateEmail = async ({
     providerName: "gemini",
   });
 
-  // 3. Call Gemini
+  // 3. Call Gemini with sender's name included
   const prompt = `You are an elite communication assistant. Write a high-impact, beautifully composed email according to these instructions:
+SENDER NAME: ${senderName}
 TONE: ${tone}
 INSTRUCTIONS: ${instructions}
 
 Format rules:
 1. Provide a clear, relevant Subject line.
 2. Provide a well-structured Body with suitable salutation, paragraphs, and professional sign-off.
-3. Return ONLY a valid JSON object with EXACTLY this structure:
+3. Use "${senderName}" as the sender in the sign-off at the end of the email (do NOT write "[Your Name]" or placeholders).
+4. Return ONLY a valid JSON object with EXACTLY this structure:
 {
   "subject": "Email subject here",
-  "body": "Dear [Recipient],\\n\\nEmail body text here...\\n\\nBest regards,\\n[Your Name]"
+  "body": "Dear [Recipient],\\n\\nEmail body text here...\\n\\nBest regards,\\n${senderName}"
 }
 Do not include any explanations, markdown code fences, or text outside the JSON.`;
 
@@ -315,13 +329,18 @@ export const sendDirectEmail = async ({
     ? keyRow.key_name.trim()
     : userEmail;
 
-  // Create transporter for this user's Gmail
+  // Create transporter for this user's Gmail with explicit host, port and timeout settings
   const transporter = nodemailer.createTransport({
-    service: "gmail",
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
     auth: {
       user: senderEmail,
       pass: cleanPass,
     },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
 
   const mailOptions = {

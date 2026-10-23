@@ -36,11 +36,13 @@ export const updateMyPlan = async (userId, planId) => {
   const currentUser = await getUserProfileById(userId);
   const user = await assignUserPlan(userId, planId);
   const tierCode = user.plans?.tier_code;
-  const planName =
-    ({ 0: "Basic", 1: "Pro", 2: "Premium" })[tierCode] ?? "updated plan";
-  if (currentUser.plan_id !== planId) {
-    void sendPlanChangedEmail(user.email, planName).catch((error) =>
-      console.error("Could not send plan change email:", error.message),
+  const planMap = { 0: "Basic", 1: "Pro", 2: "Premium" };
+  const planName = user.plans?.name || planMap[tierCode] || "updated plan";
+  const targetEmail = user.email || currentUser.email;
+
+  if (targetEmail) {
+    void sendPlanChangedEmail(targetEmail, planName).catch((error) =>
+      console.error("[UserService] Could not send plan change email:", error.message),
     );
   }
   return user;

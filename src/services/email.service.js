@@ -24,6 +24,9 @@ export const getTransporter = () => {
               user: env.mailUser,
               pass: cleanPassword,
             },
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 15000,
           }
         : {
             host: env.mailHost,
@@ -33,6 +36,9 @@ export const getTransporter = () => {
               user: env.mailUser,
               pass: cleanPassword,
             },
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 15000,
           }
     );
   }

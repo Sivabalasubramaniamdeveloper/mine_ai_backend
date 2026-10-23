@@ -4,6 +4,7 @@ export const generateEmail = async (req, res, next) => {
   try {
     const result = await emailHelperService.generateEmail({
       userId: req.user.id,
+      userName: req.user.full_name || req.user.name,
       instructions: req.body.instructions,
       tone: req.body.tone,
       model: req.body.model,
