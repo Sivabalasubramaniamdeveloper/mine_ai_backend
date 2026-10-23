@@ -6,6 +6,7 @@ import {
   updateMyProfile,
   getAvailablePlans,
   updateMyPlan,
+  sendMonthlyExpenseReport,
 } from "../controllers/user.controller.js";
 import {
   registerDevice,
@@ -26,6 +27,7 @@ router.patch("/me", authenticate, validate(updateUserSchema), updateMyProfile);
 // Plan data is served by the trusted API so client-side table policies do not hide the catalog.
 router.get("/plans", authenticate, getAvailablePlans);
 router.patch("/me/plan", authenticate, validate(updateUserPlanSchema), updateMyPlan);
+router.post("/me/expense-report-email", authenticate, sendMonthlyExpenseReport);
 
 //device routes
 router.post(

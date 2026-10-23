@@ -66,7 +66,7 @@ export const verifyTransporter = async () => {
  * @param {string} params.message
  * @returns {Promise<boolean>}
  */
-export const sendMail = async ({ to, subject, title, message }) => {
+export const sendMail = async ({ to, subject, title, message, extraHtml = "" }) => {
   const client = getTransporter();
   if (!client) {
     console.warn("[EmailService] Email not sent: MAIL_PASSWORD is not configured in .env");
@@ -85,7 +85,7 @@ export const sendMail = async ({ to, subject, title, message }) => {
       replyTo: env.supportEmail || env.mailUser,
       to,
       subject,
-      text: `${safeTitle}\n\n${safeMessage}\n\nMineAI Support: ${env.supportEmail}`,
+      text: `${safeTitle}\n\n${safeMessage}\n\nNotice: If this email arrived in your Spam folder, please mark it as Not Spam.\n\nMineAI Support: ${env.supportEmail}`,
       messageId: msgId,
       headers: {
         "X-Mailer": "MineAI Email Engine",
@@ -106,7 +106,13 @@ export const sendMail = async ({ to, subject, title, message }) => {
               <h2 style="color:#2357d8;margin:0;font-size:22px;font-weight:700;">MineAI</h2>
             </div>
             <h1 style="color:#0f172a;font-size:18px;font-weight:600;margin:0 0 16px 0;">${safeTitle}</h1>
-            <div style="color:#334155;line-height:1.65;font-size:15px;margin-bottom:24px;white-space:pre-wrap;">${safeMessage}</div>
+            <div style="color:#334155;line-height:1.65;font-size:15px;margin-bottom:20px;white-space:pre-wrap;">${safeMessage}</div>
+            ${extraHtml}
+            <div style="background:#f1f5f9;border-left:4px solid #3b82f6;padding:10px 14px;border-radius:6px;margin:20px 0;">
+              <p style="margin:0;font-size:12px;color:#475569;line-height:1.5;">
+                <strong>📬 Spam Folder Notice:</strong> If this email arrived in your Spam or Junk folder, please move it to your Inbox or mark as <em>'Not Spam'</em> so you never miss timely updates from MineAI.
+              </p>
+            </div>
             <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;" />
             <p style="color:#64748b;font-size:12px;margin:0;">
               MineAI Support: <a href="mailto:${env.supportEmail}" style="color:#2357d8;text-decoration:none;">${env.supportEmail}</a>
@@ -123,6 +129,63 @@ export const sendMail = async ({ to, subject, title, message }) => {
     console.error(`[EmailService] Failed to send email to ${to}:`, error.message);
     throw error;
   }
+};
+
+/**
+ * Sends formatted monthly expense summary report to registered user email
+ */
+export const sendExpenseReportEmail = async ({
+  to,
+  userName = "Valued User",
+  monthYear,
+  totalIncome = 0,
+  totalExpense = 0,
+  balance = 0,
+  categorySummary = [],
+}) => {
+  const categoryRows = categorySummary
+    .map(
+      (c) =>
+        `<tr><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;color:#334155;">${c.category}</td><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:600;color:#0f172a;">₹${Number(c.spent).toFixed(2)}</td></tr>`
+    )
+    .join("");
+
+  const message = `Hello ${userName},\n\nHere is your Monthly Financial Summary for ${monthYear}:\n\n• Total Income: ₹${Number(totalIncome).toFixed(2)}\n• Total Expenses: ₹${Number(totalExpense).toFixed(2)}\n• Net Balance: ₹${Number(balance).toFixed(2)}\n\nReview your budgets and transactions inside MineAI.`;
+
+  return sendMail({
+    to,
+    subject: `Monthly Expense Report - ${monthYear} | MineAI`,
+    title: `Monthly Financial Report (${monthYear})`,
+    message,
+    extraHtml: `
+      <div style="background:#f8fafc;border-radius:12px;padding:16px;margin:16px 0;border:1px solid #e2e8f0;">
+        <table style="width:100%;font-size:14px;border-collapse:collapse;">
+          <tr>
+            <td style="padding:6px 0;color:#64748b;">Total Income:</td>
+            <td style="padding:6px 0;text-align:right;font-weight:700;color:#10b981;">₹${Number(totalIncome).toFixed(2)}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;color:#64748b;">Total Expenses:</td>
+            <td style="padding:6px 0;text-align:right;font-weight:700;color:#ef4444;">₹${Number(totalExpense).toFixed(2)}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;color:#64748b;">Net Balance:</td>
+            <td style="padding:6px 0;text-align:right;font-weight:700;color:#2563eb;">₹${Number(balance).toFixed(2)}</td>
+          </tr>
+        </table>
+      </div>
+      ${
+        categoryRows
+          ? `
+        <h3 style="font-size:14px;color:#0f172a;margin:16px 0 8px 0;font-weight:600;">Spending Breakdown</h3>
+        <table style="width:100%;font-size:13px;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;">
+          ${categoryRows}
+        </table>
+      `
+          : ""
+      }
+    `,
+  });
 };
 
 /**

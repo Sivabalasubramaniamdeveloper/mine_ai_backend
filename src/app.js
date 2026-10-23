@@ -10,11 +10,13 @@ import ottRoutes from "./routes/ott.routes.js";
 import productSearchRoutes from "./routes/productSearch.routes.js";
 import emailHelperRoutes from "./routes/emailHelper.routes.js";
 import taskRoutes from "./routes/task.routes.js";
+import newsRoutes from "./routes/news.routes.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
 
 const app = express();
 
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 app.get("/health", (req, res) => {
   res.status(200).json({
@@ -63,6 +65,7 @@ app.use("/api/v1/products", productSearchRoutes);
 app.use("/api/v1/ott", ottRoutes);
 app.use("/api/v1/email-helper", emailHelperRoutes);
 app.use("/api/v1/tasks", taskRoutes);
+app.use("/api/v1/news", newsRoutes);
 
 app.use(errorMiddleware);
 
