@@ -35,6 +35,64 @@ const FLIPKART_HEADERS = {
   Pragma: "no-cache",
 };
 
+// Tracks domains not permitted on free scraping proxy plans
+const scrapingAntDisabledDomains = new Set();
+
+async function fetchPageHtml(targetUrl, headers, storeName = "Store") {
+  const apiKey = process.env.SCRAPINGANT_API_KEY;
+  let hostname = "";
+  try {
+    hostname = new URL(targetUrl).hostname;
+  } catch {}
+
+  // 1. Attempt ScrapingAnt if key exists and domain is not restricted on free tier
+  if (apiKey && hostname && !scrapingAntDisabledDomains.has(hostname)) {
+    try {
+      const response = await axios.get("https://api.scrapingant.com/v2/general", {
+        params: {
+          "x-api-key": apiKey,
+          url: targetUrl,
+          browser: "false",
+          proxy_country: "IN",
+        },
+        timeout: 15000,
+        responseType: "text",
+      });
+
+      if (typeof response.data === "string" && response.data.trim().length > 100) {
+        return response.data;
+      }
+    } catch (antErr) {
+      const status = antErr.response?.status;
+      let detail = antErr.message;
+      if (typeof antErr.response?.data === "string") {
+        try {
+          const parsed = JSON.parse(antErr.response.data);
+          detail = parsed.detail || detail;
+        } catch {
+          detail = antErr.response.data || detail;
+        }
+      } else if (antErr.response?.data?.detail) {
+        detail = antErr.response.data.detail;
+      }
+
+      if (status === 422 && String(detail).includes("not allowed for Free subscription plan")) {
+        console.warn(`[${storeName}] ScrapingAnt free plan domain restriction for '${hostname}'. Direct routing enabled.`);
+        scrapingAntDisabledDomains.add(hostname);
+      } else {
+        console.warn(`[${storeName}] ScrapingAnt error (${status || antErr.code}): ${detail}. Falling back to direct scraping.`);
+      }
+    }
+  }
+
+  // 2. Direct request fallback
+  const response = await axios.get(targetUrl, {
+    headers,
+    timeout: 12000,
+  });
+  return response.data;
+}
+
 // -----------------------------------------------------------------
 // Helpers: Clean Query & Numeric Price
 // -----------------------------------------------------------------
@@ -199,28 +257,7 @@ export const scrapeAmazonPrice = async (rawQuery) => {
   const targetAmazonUrl = `https://www.amazon.in/s?k=${encodeURIComponent(query)}`;
 
   try {
-    let html;
-
-    // Use ScrapingAnt if the API key is present (production on Railway)
-    if (process.env.SCRAPINGANT_API_KEY) {
-      const response = await axios.get("https://api.scrapingant.com/v2/general", {
-        params: {
-          "x-api-key": process.env.SCRAPINGANT_API_KEY,
-          url: targetAmazonUrl,
-          browser: "false", // set to "true" only if HTML is empty
-          proxy_country: "IN", // Route via Indian IP for Amazon India prices
-        },
-        timeout: 25000,
-      });
-      html = response.data;
-    } else {
-      // Local fallback using direct request
-      const response = await axios.get(targetAmazonUrl, {
-        headers: AMAZON_HEADERS,
-        timeout: 10000,
-      });
-      html = response.data;
-    }
+    const html = await fetchPageHtml(targetAmazonUrl, AMAZON_HEADERS, "Amazon Price");
 
     const $ = cheerio.load(html);
     const candidates = [];
@@ -233,6 +270,7 @@ export const scrapeAmazonPrice = async (rawQuery) => {
         $(el).find(".puis-sponsored-label-text, .s-sponsored-label-text").length > 0;
 
       const title =
+        $(el).find("h2").text().replace(/\s+/g, " ").trim() ||
         $(el).find("h2 a span").first().text().trim() ||
         $(el).find("h2 span").first().text().trim();
 
@@ -276,7 +314,7 @@ export const scrapeAmazonPrice = async (rawQuery) => {
       imageUrl: bestCandidate ? bestCandidate.image : null,
     };
   } catch (err) {
-    console.error("ScrapingAnt Amazon Error:", err.response?.data || err.message);
+    console.error("Amazon Price Scraping Error:", err.response?.data || err.message);
     return {
       store: "Amazon",
       found: false,
@@ -297,10 +335,7 @@ export const scrapeFlipkartPrice = async (rawQuery) => {
   const searchUrl = `https://www.flipkart.com/search?q=${encodeURIComponent(query)}`;
 
   try {
-    const { data: html } = await axios.get(searchUrl, {
-      headers: FLIPKART_HEADERS,
-      timeout: 10000,
-    });
+    const html = await fetchPageHtml(searchUrl, FLIPKART_HEADERS, "Flipkart Price");
 
     const $ = cheerio.load(html);
     let title = null;

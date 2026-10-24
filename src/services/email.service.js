@@ -1,7 +1,35 @@
 import nodemailer from "nodemailer";
+import axios from "axios";
 import env from "../config/env.js";
 
 let transporter = null;
+
+const escapeHtml = (value = "") => String(value)
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/\"/g, "&quot;")
+  .replace(/'/g, "&#39;");
+
+const sendWithResend = async ({ to, subject, text, html }) => {
+  const recipients = String(to).split(",").map((value) => value.trim()).filter(Boolean);
+  const response = await axios.post(
+    "https://api.resend.com/emails",
+    {
+      from: env.mailFrom,
+      to: recipients,
+      reply_to: env.supportEmail || env.mailUser,
+      subject,
+      text,
+      html,
+    },
+    {
+      headers: { Authorization: `Bearer ${env.resendApiKey}` },
+      timeout: 15000,
+    },
+  );
+  return { accepted: recipients, messageId: response.data?.id, provider: "resend" };
+};
 
 /**
  * Creates or retrieves the singleton Nodemailer transporter.
@@ -67,14 +95,46 @@ export const verifyTransporter = async () => {
  * @returns {Promise<boolean>}
  */
 export const sendMail = async ({ to, subject, title, message, extraHtml = "" }) => {
-  const client = getTransporter();
-  if (!client) {
-    console.warn("[EmailService] Email not sent: MAIL_PASSWORD is not configured in .env");
-    return false;
+  const safeTitle = escapeHtml(title);
+  const safeMessage = escapeHtml(message);
+  const text = `${String(title)}\n\n${String(message)}\n\nNotice: If this email arrived in your Spam folder, please mark it as Not Spam.\n\nMineAI Support: ${env.supportEmail}`;
+  const html = `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>${safeTitle}</title>
+        </head>
+        <body style="margin:0;padding:24px;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+          <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;padding:32px;box-shadow:0 4px 12px rgba(0,0,0,0.04);">
+            <div style="margin-bottom:20px;"><h2 style="color:#2357d8;margin:0;font-size:22px;font-weight:700;">MineAI</h2></div>
+            <h1 style="color:#0f172a;font-size:18px;font-weight:600;margin:0 0 16px 0;">${safeTitle}</h1>
+            <div style="color:#334155;line-height:1.65;font-size:15px;margin-bottom:20px;white-space:pre-wrap;">${safeMessage}</div>
+            ${extraHtml}
+            <div style="background:#f1f5f9;border-left:4px solid #3b82f6;padding:10px 14px;border-radius:6px;margin:20px 0;"><p style="margin:0;font-size:12px;color:#475569;line-height:1.5;"><strong>Spam Folder Notice:</strong> If this email arrived in Spam or Junk, move it to your Inbox or mark it as Not Spam.</p></div>
+            <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;" />
+            <p style="color:#64748b;font-size:12px;margin:0;">MineAI Support: <a href="mailto:${env.supportEmail}" style="color:#2357d8;text-decoration:none;">${env.supportEmail}</a></p>
+          </div>
+        </body>
+        </html>`;
+
+  if (env.resendApiKey) {
+    try {
+      const result = await sendWithResend({ to, subject, text, html });
+      console.log(`[EmailService] Resend accepted email to ${to}. MessageId: ${result.messageId}`);
+      return result;
+    } catch (error) {
+      console.error(`[EmailService] Resend failed for ${to}:`, error.response?.data || error.message);
+      throw new Error("Transactional email delivery failed. Check RESEND_API_KEY and that MAIL_FROM uses a verified Resend domain.");
+    }
   }
 
-  const safeTitle = String(title).replace(/[<>]/g, "");
-  const safeMessage = String(message).replace(/[<>]/g, "");
+  const client = getTransporter();
+  if (!client) {
+    console.warn("[EmailService] Email not sent: configure RESEND_API_KEY or MAIL_PASSWORD.");
+    return false;
+  }
 
   try {
     const msgId = `<${Date.now()}.${Math.random().toString(36).substring(2, 10)}@mineai.app>`;
@@ -85,42 +145,14 @@ export const sendMail = async ({ to, subject, title, message, extraHtml = "" }) 
       replyTo: env.supportEmail || env.mailUser,
       to,
       subject,
-      text: `${safeTitle}\n\n${safeMessage}\n\nNotice: If this email arrived in your Spam folder, please mark it as Not Spam.\n\nMineAI Support: ${env.supportEmail}`,
+      text,
       messageId: msgId,
       headers: {
         "X-Mailer": "MineAI Email Engine",
         "X-Priority": "3",
         "Importance": "Normal",
       },
-      html: `
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>${safeTitle}</title>
-        </head>
-        <body style="margin:0;padding:24px;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-          <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;padding:32px;box-shadow:0 4px 12px rgba(0,0,0,0.04);">
-            <div style="margin-bottom:20px;">
-              <h2 style="color:#2357d8;margin:0;font-size:22px;font-weight:700;">MineAI</h2>
-            </div>
-            <h1 style="color:#0f172a;font-size:18px;font-weight:600;margin:0 0 16px 0;">${safeTitle}</h1>
-            <div style="color:#334155;line-height:1.65;font-size:15px;margin-bottom:20px;white-space:pre-wrap;">${safeMessage}</div>
-            ${extraHtml}
-            <div style="background:#f1f5f9;border-left:4px solid #3b82f6;padding:10px 14px;border-radius:6px;margin:20px 0;">
-              <p style="margin:0;font-size:12px;color:#475569;line-height:1.5;">
-                <strong>📬 Spam Folder Notice:</strong> If this email arrived in your Spam or Junk folder, please move it to your Inbox or mark as <em>'Not Spam'</em> so you never miss timely updates from MineAI.
-              </p>
-            </div>
-            <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;" />
-            <p style="color:#64748b;font-size:12px;margin:0;">
-              MineAI Support: <a href="mailto:${env.supportEmail}" style="color:#2357d8;text-decoration:none;">${env.supportEmail}</a>
-            </p>
-          </div>
-        </body>
-        </html>
-      `,
+      html,
     });
 
     console.log(`[EmailService] Email sent successfully to ${to}. MessageId: ${info.messageId}`);

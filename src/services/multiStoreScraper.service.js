@@ -6,17 +6,65 @@ import * as cheerio from "cheerio";
 // 1. CONFIGURATION
 // -------------------------------------------------------------
 
-const REQUEST_TIMEOUT = 10000;
+const REQUEST_TIMEOUT = 12000;
 const MAX_RETRIES = 2;
 
+const USER_AGENTS = [
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+];
+
 const BROWSER_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "User-Agent": USER_AGENTS[0],
   Accept:
     "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
   "Accept-Language": "en-IN,en;q=0.9",
   "Cache-Control": "no-cache",
 };
+
+const AMAZON_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  Accept:
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+  "Accept-Language": "en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7",
+  "Accept-Encoding": "gzip, deflate, br",
+  Connection: "keep-alive",
+  "Upgrade-Insecure-Requests": "1",
+  "Sec-Fetch-Dest": "document",
+  "Sec-Fetch-Mode": "navigate",
+  "Sec-Fetch-Site": "none",
+  "Sec-Fetch-User": "?1",
+  "sec-ch-ua":
+    '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+  "sec-ch-ua-mobile": "?0",
+  "sec-ch-ua-platform": '"macOS"',
+  Pragma: "no-cache",
+  "Cache-Control": "no-cache",
+};
+
+const FLIPKART_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Accept-Language": "en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7",
+  Accept:
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+  "Cache-Control": "no-cache",
+  Pragma: "no-cache",
+};
+
+const MEESHO_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Linux; Android 13; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36",
+  Accept:
+    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "en-IN,en;q=0.9",
+  Referer: "https://www.meesho.com/",
+};
+
+// Tracks domains not permitted on free scraping proxy plans so we skip proxy and scrape directly
+const scrapingAntDisabledDomains = new Set();
 
 // -------------------------------------------------------------
 // 2. SHARED HELPERS
@@ -81,25 +129,36 @@ function normalizeProduct({
 }
 
 function getHttpError(error) {
+  const detail =
+    error.response?.data?.detail ||
+    error.response?.data?.message ||
+    error.message;
+
   return {
-    message: error.message,
+    message: detail || error.message,
     status: error.response?.status ?? null,
     code: error.code ?? null,
   };
 }
 
-// Retry temporary request failures. Do not retry ordinary 4xx
-// responses except 408, 425, and 429.
+// Retry temporary request failures with rotating user agents.
 async function fetchHtml(url, extraOptions = {}) {
   let lastError;
 
   for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
     try {
+      const ua = USER_AGENTS[(attempt - 1) % USER_AGENTS.length];
+      const headers = {
+        ...BROWSER_HEADERS,
+        "User-Agent": ua,
+        ...(extraOptions.headers || {}),
+      };
+
       const response = await axios.get(url, {
-        headers: BROWSER_HEADERS,
         timeout: REQUEST_TIMEOUT,
         responseType: "text",
         ...extraOptions,
+        headers,
       });
 
       if (typeof response.data !== "string") {
@@ -136,21 +195,77 @@ async function fetchHtml(url, extraOptions = {}) {
   throw lastError;
 }
 
-function validateHtml(html, store) {
-  const $ = cheerio.load(html);
+/**
+ * Robust fetcher that uses ScrapingAnt when available and supported,
+ * but automatically and immediately falls back to direct HTTP scraping
+ * if ScrapingAnt fails (e.g. Free plan domain restrictions, 422, timeouts, 403).
+ */
+async function fetchPageHtml(targetUrl, customHeaders = {}, storeName = "Store") {
+  const apiKey = process.env.SCRAPINGANT_API_KEY;
+  let hostname = "";
+  try {
+    hostname = new URL(targetUrl).hostname;
+  } catch {}
 
-  const pageText = $("body").text().toLowerCase();
+  // 1. Attempt ScrapingAnt if key exists and domain is not restricted on free tier
+  if (apiKey && hostname && !scrapingAntDisabledDomains.has(hostname)) {
+    try {
+      const response = await axios.get("https://api.scrapingant.com/v2/general", {
+        params: {
+          "x-api-key": apiKey,
+          url: targetUrl,
+          browser: "false",
+          proxy_country: "IN",
+        },
+        timeout: 15000,
+        responseType: "text",
+      });
 
-  if (
-    pageText.includes("robot check") ||
-    pageText.includes("verify you are human") ||
-    pageText.includes("captcha")
-  ) {
-    throw new Error(`${store} returned a bot-verification page`);
+      if (typeof response.data === "string" && response.data.trim().length > 100) {
+        return response.data;
+      }
+    } catch (antErr) {
+      const status = antErr.response?.status;
+      let detail = antErr.message;
+      if (typeof antErr.response?.data === "string") {
+        try {
+          const parsed = JSON.parse(antErr.response.data);
+          detail = parsed.detail || detail;
+        } catch {
+          detail = antErr.response.data || detail;
+        }
+      } else if (antErr.response?.data?.detail) {
+        detail = antErr.response.data.detail;
+      }
+
+      if (status === 422 && String(detail).includes("not allowed for Free subscription plan")) {
+        console.warn(`[${storeName}] ScrapingAnt free plan domain restriction for '${hostname}'. Direct routing enabled.`);
+        scrapingAntDisabledDomains.add(hostname);
+      } else {
+        console.warn(`[${storeName}] ScrapingAnt failed (${status || antErr.code}): ${detail}. Falling back to direct scraping.`);
+      }
+    }
   }
 
-  if (!html || html.trim().length < 100) {
+  // 2. Direct scraping fallback
+  return await fetchHtml(targetUrl, { headers: customHeaders });
+}
+
+function validateHtml(html, store) {
+  if (!html || typeof html !== "string" || html.trim().length < 100) {
     throw new Error(`${store} returned an empty or incomplete page`);
+  }
+
+  const $ = cheerio.load(html);
+  const pageTitle = $("title").text().toLowerCase();
+
+  if (
+    pageTitle.includes("robot check") ||
+    pageTitle.includes("verify you are human") ||
+    $('form[action*="validateCaptcha"]').length > 0 ||
+    $("#captchacharacters").length > 0
+  ) {
+    throw new Error(`${store} returned a bot-verification page`);
   }
 
   return $;
@@ -166,25 +281,7 @@ export async function scrapeAmazon(query, page = 1) {
     `&page=${Number(page) || 1}`;
 
   try {
-    let html;
-    const apiKey = process.env.SCRAPINGANT_API_KEY;
-
-    if (apiKey) {
-      html = await fetchHtml(
-        "https://api.scrapingant.com/v2/general",
-        {
-          params: {
-            "x-api-key": apiKey,
-            url: targetUrl,
-            browser: "false",
-            proxy_country: "IN",
-          },
-        }
-      );
-    } else {
-      html = await fetchHtml(targetUrl);
-    }
-
+    const html = await fetchPageHtml(targetUrl, AMAZON_HEADERS, "Amazon");
     const $ = validateHtml(html, "Amazon");
     const products = [];
     const seen = new Set();
@@ -199,9 +296,9 @@ export async function scrapeAmazon(query, page = 1) {
       if (!asin || seen.has(asin)) return;
 
       const title =
+        card.find("h2").text().replace(/\s+/g, " ").trim() ||
         card.find("h2 a span").first().text().trim() ||
-        card.find("h2 span").first().text().trim() ||
-        card.find("h2").text().trim();
+        card.find("h2 span").first().text().trim();
 
       const priceText =
         card.find(".a-price .a-offscreen").first().text().trim() ||
@@ -255,59 +352,14 @@ export async function scrapeAmazon(query, page = 1) {
 // -------------------------------------------------------------
 // 4. FLIPKART
 // -------------------------------------------------------------
-const FLIPKART_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-  "Accept-Language": "en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7",
-  Accept:
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-  "Cache-Control": "no-cache",
-  Pragma: "no-cache",
-};
-
-// -------------------------------------------------------------
-// 4. FLIPKART (Adapted directly from your working scraper logic)
-// -------------------------------------------------------------
 
 export async function scrapeFlipkart(query, page = 1) {
   const targetUrl =
     `https://www.flipkart.com/search?q=${encodeURIComponent(query)}` +
     `&page=${Number(page) || 1}`;
 
-  const FLIPKART_HEADERS = {
-    "User-Agent":
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept-Language": "en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7",
-    Accept:
-      "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    "Cache-Control": "no-cache",
-    Pragma: "no-cache",
-  };
-
   try {
-    let html = "";
-    const apiKey = process.env.SCRAPINGANT_API_KEY;
-
-    // Use ScrapingAnt if running in cloud/Railway, otherwise direct request
-    if (apiKey) {
-      const response = await axios.get("https://api.scrapingant.com/v2/general", {
-        params: {
-          "x-api-key": apiKey,
-          url: targetUrl,
-          browser: "false",
-          proxy_country: "IN",
-        },
-        timeout: 15000,
-      });
-      html = typeof response.data === "string" ? response.data : JSON.stringify(response.data);
-    } else {
-      const response = await axios.get(targetUrl, {
-        headers: FLIPKART_HEADERS,
-        timeout: 10000,
-      });
-      html = response.data;
-    }
-
+    const html = await fetchPageHtml(targetUrl, FLIPKART_HEADERS, "Flipkart");
     const $ = cheerio.load(html);
     const products = [];
     const seen = new Set();
@@ -419,12 +471,7 @@ export async function scrapeMeesho(query, page = 1) {
     `&page=${Number(page) || 1}`;
 
   try {
-    const html = await fetchHtml(targetUrl, {
-      headers: {
-        ...BROWSER_HEADERS,
-        Referer: "https://www.meesho.com/",
-      },
-    });
+    const html = await fetchPageHtml(targetUrl, MEESHO_HEADERS, "Meesho");
 
     const $ = validateHtml(html, "Meesho");
     const products = [];

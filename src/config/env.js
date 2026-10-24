@@ -25,6 +25,9 @@ const env = {
   mailPassword: process.env.MAIL_PASSWORD ? process.env.MAIL_PASSWORD.trim() : undefined,
   mailFrom: process.env.MAIL_FROM || "MineAI <mineai.support@gmail.com>",
   supportEmail: process.env.SUPPORT_EMAIL || "mineai.support@gmail.com",
+  // HTTPS transactional delivery works on every Railway plan. SMTP remains a
+  // fallback for self-hosted deployments or Railway Pro and above.
+  resendApiKey: process.env.RESEND_API_KEY?.trim(),
 };
 
 if (!env.supabaseUrl) {
