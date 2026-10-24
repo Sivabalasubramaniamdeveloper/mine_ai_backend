@@ -11,6 +11,7 @@ import productSearchRoutes from "./routes/productSearch.routes.js";
 import emailHelperRoutes from "./routes/emailHelper.routes.js";
 import taskRoutes from "./routes/task.routes.js";
 import newsRoutes from "./routes/news.routes.js";
+import ticketRoutes from "./routes/ticket.routes.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
 
 const app = express();
@@ -66,6 +67,7 @@ app.use("/api/v1/ott", ottRoutes);
 app.use("/api/v1/email-helper", emailHelperRoutes);
 app.use("/api/v1/tasks", taskRoutes);
 app.use("/api/v1/news", newsRoutes);
+app.use("/api/v1/tickets", ticketRoutes);
 
 app.use(errorMiddleware);
 
