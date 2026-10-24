@@ -389,6 +389,7 @@ export const scrapeCurrentConditions = async ({
       },
 
       mindAiSuggests: aiSuggestion,
+      mineAiSuggests: aiSuggestion,
 
       metrics: {
         wind: {

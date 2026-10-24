@@ -3,6 +3,7 @@ import path from "path";
 import supabase from "../config/supabase.js";
 import env from "../config/env.js";
 import { sendMail } from "./email.service.js";
+import fcmService from "./fcm.service.js";
 
 const DATA_DIR = path.resolve(process.cwd(), "data");
 const LOCAL_TICKETS_FILE = path.join(DATA_DIR, "tickets.json");
@@ -101,6 +102,18 @@ export const createTicket = async ({
     });
   } catch (mailErr) {
     console.error("Failed to send admin notification email:", mailErr.message);
+  }
+
+  // Send push notification confirmation to user
+  try {
+    await fcmService.sendNotificationToUser({
+      userId,
+      title: `Support Ticket Received (${ticketId})`,
+      body: `Your ticket for "${ticketData.module}" is received and queued for review.`,
+      data: { ticketId, module: ticketData.module, screen: "support_tickets" },
+    });
+  } catch (pushErr) {
+    console.warn("FCM ticket notify warning:", pushErr.message);
   }
 
   return ticketData;
