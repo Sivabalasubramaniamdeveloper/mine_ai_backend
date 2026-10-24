@@ -98,13 +98,16 @@ export const login = async ({ email, password }) => {
 
   await ensureApplicationProfile(data.user);
 
+  const ONE_WEEK_SECONDS = 7 * 24 * 60 * 60; // 604800 seconds (1 week)
+  const expiresAt = Math.floor(Date.now() / 1000) + ONE_WEEK_SECONDS;
+
   return {
     user: { id: data.user.id, email: data.user.email },
     session: {
       access_token: data.session.access_token,
       refresh_token: data.session.refresh_token,
-      expires_at: data.session.expires_at,
-      expires_in: data.session.expires_in,
+      expires_at: expiresAt,
+      expires_in: ONE_WEEK_SECONDS,
     },
   };
 };
@@ -123,12 +126,46 @@ export const refreshSession = async (refreshToken) => {
     throw invalidRefresh;
   }
 
+  const ONE_WEEK_SECONDS = 7 * 24 * 60 * 60;
+  const expiresAt = Math.floor(Date.now() / 1000) + ONE_WEEK_SECONDS;
+
   return {
     access_token: data.session.access_token,
     refresh_token: data.session.refresh_token,
     token_type: data.session.token_type,
-    expires_in: data.session.expires_in,
-    expires_at: data.session.expires_at,
+    expires_in: ONE_WEEK_SECONDS,
+    expires_at: expiresAt,
     user: { id: data.user.id, email: data.user.email },
+  };
+};
+
+// Requests a password recovery link or token for the provided email address.
+export const forgotPassword = async ({ email }) => {
+  if (!email || !email.trim()) {
+    const err = new Error("Email address is required");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    const { error } = await supabaseAuth.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo:
+        process.env.PASSWORD_RECOVERY_REDIRECT_URI ||
+        "mineai://reset-password",
+    });
+
+    if (error) {
+      console.warn("Supabase resetPasswordForEmail notice:", error.message);
+    }
+  } catch (err) {
+    console.warn("Forgot password dispatch warning:", err.message);
+  }
+
+  // Always return a generic success response to prevent email enumeration
+  return {
+    success: true,
+    message: "If an account exists with this email, password reset instructions have been sent.",
   };
 };

@@ -29,6 +29,16 @@ export const refreshSession = async (req, res, next) => {
   }
 };
 
+// Dispatches a password recovery email to the user.
+export const forgotPassword = async (req, res, next) => {
+  try {
+    const result = await authService.forgotPassword(req.body);
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Sends a test email to verify SMTP credentials and connectivity.
 export const testEmail = async (req, res, next) => {
   try {
