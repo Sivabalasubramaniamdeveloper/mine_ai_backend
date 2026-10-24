@@ -1,5 +1,6 @@
 import * as userService from "../services/user.service.js";
 import * as emailService from "../services/email.service.js";
+import supabase from "../config/supabase.js";
 
 export const getMyProfile = async (req, res, next) => {
   try {
@@ -85,4 +86,33 @@ export const sendMonthlyExpenseReport = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+export const getExpenseEmailPreference = async (req, res, next) => {
+  try {
+    const { data, error } = await supabase
+      .from("expense_email_preferences")
+      .select("monthly_report_enabled")
+      .eq("user_id", req.user.id)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return res.status(200).json({ success: true, data: { monthly_report_enabled: data?.monthly_report_enabled ?? true } });
+  } catch (error) { next(error); }
+};
+
+export const updateExpenseEmailPreference = async (req, res, next) => {
+  try {
+    if (typeof req.body.monthly_report_enabled !== "boolean") {
+      const err = new Error("monthly_report_enabled must be true or false");
+      err.statusCode = 400;
+      throw err;
+    }
+    const { data, error } = await supabase.from("expense_email_preferences").upsert({
+      user_id: req.user.id,
+      monthly_report_enabled: req.body.monthly_report_enabled,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id" }).select("monthly_report_enabled").single();
+    if (error) throw new Error(error.message);
+    return res.status(200).json({ success: true, data });
+  } catch (error) { next(error); }
 };

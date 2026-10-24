@@ -6,6 +6,9 @@ import {
   saveSmtpConfig,
   deleteSmtpConfig,
   sendDirectEmail,
+  getSavedEmails,
+  saveEmailDraft,
+  deleteSavedEmail,
 } from "../controllers/emailHelper.controller.js";
 
 const router = Router();
@@ -14,6 +17,9 @@ router.post("/generate", authenticate, generateEmail);
 router.get("/smtp-status", authenticate, getSmtpStatus);
 router.post("/smtp-config", authenticate, saveSmtpConfig);
 router.delete("/smtp-config", authenticate, deleteSmtpConfig);
+router.get("/saved-emails", authenticate, getSavedEmails);
+router.post("/saved-emails", authenticate, saveEmailDraft);
+router.delete("/saved-emails/:id", authenticate, deleteSavedEmail);
 router.post("/send", authenticate, sendDirectEmail);
 
 export default router;

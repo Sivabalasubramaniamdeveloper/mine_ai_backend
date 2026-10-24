@@ -64,6 +64,27 @@ export const deleteSmtpConfig = async (req, res, next) => {
   }
 };
 
+export const getSavedEmails = async (req, res, next) => {
+  try {
+    const result = await emailHelperService.getSavedEmails(req.user.id);
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) { next(error); }
+};
+
+export const saveEmailDraft = async (req, res, next) => {
+  try {
+    const result = await emailHelperService.saveEmailDraft(req.user.id, req.body);
+    return res.status(201).json({ success: true, message: "Email saved securely to cloud", data: result });
+  } catch (error) { next(error); }
+};
+
+export const deleteSavedEmail = async (req, res, next) => {
+  try {
+    await emailHelperService.deleteSavedEmail(req.user.id, req.params.id);
+    return res.status(200).json({ success: true, message: "Saved email deleted" });
+  } catch (error) { next(error); }
+};
+
 export const sendDirectEmail = async (req, res, next) => {
   try {
     const result = await emailHelperService.sendDirectEmail({

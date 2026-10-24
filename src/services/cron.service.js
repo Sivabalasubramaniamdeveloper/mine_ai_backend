@@ -20,14 +20,17 @@ export const initCronJobs = () => {
     try {
       const { data: users, error } = await supabase
         .from("users")
-        .select("id, email, full_name");
+        .select("id, email, full_name, expense_email_preferences(monthly_report_enabled)");
 
       if (error || !users) return;
 
       const monthName = today.toLocaleString("default", { month: "long", year: "numeric" });
 
       for (const u of users) {
-        if (!u.email) continue;
+        const preference = Array.isArray(u.expense_email_preferences)
+          ? u.expense_email_preferences[0]
+          : u.expense_email_preferences;
+        if (!u.email || preference?.monthly_report_enabled === false) continue;
         try {
           await sendExpenseReportEmail({
             to: u.email,

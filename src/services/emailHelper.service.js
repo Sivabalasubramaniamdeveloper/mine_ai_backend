@@ -11,6 +11,26 @@ import {
   deleteApiKey,
 } from "../repositories/apiKey.repository.js";
 
+const PLAN_DRAFT_LIMITS = { 0: 5, 1: 20, 2: 50 };
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const escapeHtml = (value = "") => String(value)
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/\"/g, "&quot;")
+  .replace(/'/g, "&#39;");
+
+const getDraftLimit = async (userId) => {
+  const { data, error } = await supabase
+    .from("users")
+    .select("plans(tier_code)")
+    .eq("id", userId)
+    .single();
+  if (error) throw new Error(error.message);
+  return PLAN_DRAFT_LIMITS[data?.plans?.tier_code] ?? PLAN_DRAFT_LIMITS[0];
+};
+
 /**
  * Resolves or creates the email_smtp provider in ai_providers
  */
@@ -260,6 +280,43 @@ export const deleteSmtpConfig = async (userId) => {
   return { is_configured: false };
 };
 
+export const getSavedEmails = async (userId) => {
+  const [{ data, error }, limit] = await Promise.all([
+    supabase.from("saved_emails").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
+    getDraftLimit(userId),
+  ]);
+  if (error) throw new Error(error.message);
+  return { emails: data || [], limit };
+};
+
+export const saveEmailDraft = async (userId, { label, recipient, subject, body, tone }) => {
+  if (!subject?.trim() || !body?.trim()) {
+    const err = new Error("Email subject and body are required");
+    err.statusCode = 400;
+    throw err;
+  }
+  const limit = await getDraftLimit(userId);
+  const { count, error: countError } = await supabase
+    .from("saved_emails").select("id", { count: "exact", head: true }).eq("user_id", userId);
+  if (countError) throw new Error(countError.message);
+  if ((count || 0) >= limit) {
+    const err = new Error(`Saved email limit reached (${limit} emails for your plan)`);
+    err.statusCode = 429;
+    throw err;
+  }
+  const { data, error } = await supabase.from("saved_emails").insert({
+    user_id: userId, label: label?.trim() || "General", recipient: recipient?.trim() || null,
+    subject: subject.trim(), body: body.trim(), tone: tone?.trim() || "Professional",
+  }).select().single();
+  if (error) throw new Error(error.message);
+  return { email: data, limit };
+};
+
+export const deleteSavedEmail = async (userId, id) => {
+  const { error } = await supabase.from("saved_emails").delete().eq("id", id).eq("user_id", userId);
+  if (error) throw new Error(error.message);
+};
+
 /**
  * 5. Send Email directly through application
  */
@@ -272,6 +329,17 @@ export const sendDirectEmail = async ({
 }) => {
   if (!to || !to.trim()) {
     const err = new Error("Recipient 'to' email address is required");
+    err.statusCode = 400;
+    throw err;
+  }
+  const recipients = to.split(",").map((item) => item.trim()).filter(Boolean);
+  if (!recipients.length || recipients.some((item) => !emailPattern.test(item))) {
+    const err = new Error("Enter a valid recipient email address");
+    err.statusCode = 400;
+    throw err;
+  }
+  if (cc?.trim() && cc.split(",").map((item) => item.trim()).some((item) => !emailPattern.test(item))) {
+    const err = new Error("Enter valid CC email addresses");
     err.statusCode = 400;
     throw err;
   }
@@ -343,6 +411,7 @@ export const sendDirectEmail = async ({
     socketTimeout: 15000,
   });
 
+  const safeBody = escapeHtml(body).replace(/\n/g, "<br>");
   const mailOptions = {
     from: `"${user?.full_name || "MineAI User"}" <${senderEmail}>`,
     sender: senderEmail,
@@ -355,7 +424,7 @@ export const sendDirectEmail = async ({
       "X-Priority": "3",
       "Importance": "Normal",
     },
-    html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;color:#1e293b;line-height:1.65;"><div style="white-space:pre-wrap;">${body.replace(/\n/g, "<br>")}</div></body></html>`,
+    html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;color:#1e293b;line-height:1.65;"><div>${safeBody}</div></body></html>`,
   };
 
   if (cc && cc.trim()) {
@@ -367,6 +436,10 @@ export const sendDirectEmail = async ({
     console.log(`[EmailHelper] Direct email sent from ${userEmail} to ${to}: ${info.messageId}`);
     return {
       success: true,
+      accepted: info.accepted || [],
+      rejected: info.rejected || [],
+      deliveryStatus: (info.rejected || []).length ? "partially_accepted" : "accepted_by_mail_server",
+      deliveryNotice: "The mail server accepted this message. Delivery to Inbox cannot be guaranteed; recipients may need to check Spam or Junk.",
       messageId: info.messageId,
       from: userEmail,
       to,
