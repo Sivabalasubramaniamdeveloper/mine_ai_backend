@@ -107,19 +107,43 @@ class FcmService {
     if (!userId) return { success: false, reason: "NO_USER_ID" };
 
     try {
-      const { data: profile, error } = await supabase
-        .from("profiles")
-        .select("fcm_token")
-        .eq("id", userId)
-        .maybeSingle();
+      let targetToken = null;
 
-      if (error || !profile?.fcm_token) {
-        console.log(`[FCM] No token registered for user ${userId}. Logging alert: "${title}"`);
+      // 1. Try fetching active push token from user_devices table
+      const { data: devices } = await supabase
+        .from("user_devices")
+        .select("push_token")
+        .eq("user_id", userId)
+        .eq("is_active", true)
+        .order("last_active_at", { ascending: false })
+        .limit(1);
+
+      if (devices && devices.length > 0 && devices[0].push_token) {
+        targetToken = devices[0].push_token;
+      }
+
+      // 2. Fallback to users table if fcm_token column exists
+      if (!targetToken) {
+        try {
+          const { data: user } = await supabase
+            .from("users")
+            .select("fcm_token")
+            .eq("id", userId)
+            .maybeSingle();
+
+          if (user?.fcm_token) {
+            targetToken = user.fcm_token;
+          }
+        } catch (_) {}
+      }
+
+      if (!targetToken) {
+        console.log(`[FCM] No token registered for user ${userId}. Simulated alert: "${title}" - "${body}"`);
         return { success: false, reason: "TOKEN_NOT_FOUND" };
       }
 
       return await this.sendPushNotification({
-        fcmToken: profile.fcm_token,
+        fcmToken: targetToken,
         title,
         body,
         data: { ...data, userId },

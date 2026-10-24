@@ -3,6 +3,7 @@ import { createUserProfile } from "../repositories/user.repository.js";
 import { createUserSettings } from "../repositories/user-settings.repository.js";
 import supabaseAuth from "../config/supabase-auth.js";
 import { sendWelcomeEmails } from "./email.service.js";
+import fcmService from "./fcm.service.js";
 
 // Creates the app profile after Supabase confirms the user can authenticate.
 const ensureApplicationProfile = async (authUser) => {
@@ -78,7 +79,7 @@ const ensureApplicationProfile = async (authUser) => {
 };
 
 // Authenticates with Supabase, rejects unverified email, then initializes app records.
-export const login = async ({ email, password }) => {
+export const login = async ({ email, password, fcm_token, push_token }) => {
   const { data, error } = await supabaseAuth.auth.signInWithPassword({
     email,
     password,
@@ -97,6 +98,38 @@ export const login = async ({ email, password }) => {
   }
 
   await ensureApplicationProfile(data.user);
+
+  // Sync active FCM token if provided in login request
+  const activeToken = fcm_token || push_token;
+  if (activeToken) {
+    try {
+      await supabase.from("user_devices").upsert(
+        {
+          user_id: data.user.id,
+          device_id: data.user.id,
+          push_token: activeToken,
+          is_active: true,
+          last_active_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,device_id" }
+      );
+    } catch (tokenErr) {
+      console.warn("[Auth Login] Error saving device token:", tokenErr.message);
+    }
+  }
+
+  // Trigger Welcome Push Notification from backend
+  const displayName = data.user.user_metadata?.full_name || (data.user.email ? data.user.email.split("@")[0] : "Friend");
+  fcmService.sendNotificationToUser({
+    userId: data.user.id,
+    title: "Welcome to Mine AI! 🚀",
+    body: `Welcome back, ${displayName}! Your AI assistant and modules are ready.`,
+    data: {
+      type: "login_welcome",
+      screen: "home",
+      userId: data.user.id,
+    },
+  }).catch((err) => console.log("[FCM Login Welcome Note]", err.message));
 
   const ONE_WEEK_SECONDS = 7 * 24 * 60 * 60; // 604800 seconds (1 week)
   const expiresAt = Math.floor(Date.now() / 1000) + ONE_WEEK_SECONDS;
