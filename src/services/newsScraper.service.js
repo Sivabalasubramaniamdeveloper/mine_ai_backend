@@ -1,18 +1,47 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
 
-// Curated city-specific feeds with high-res news enclosures
-const CITY_FEEDS = {
+// Times of India verified city feeds
+const TOI_CITY_FEEDS = {
   chennai: "https://timesofindia.indiatimes.com/rssfeeds/-2128838597.cms",
   bengaluru: "https://timesofindia.indiatimes.com/rssfeeds/-2128833038.cms",
   bangalore: "https://timesofindia.indiatimes.com/rssfeeds/-2128833038.cms",
-  mumbai: "https://timesofindia.indiatimes.com/rssfeeds/-2128838597.cms",
+  mumbai: "https://timesofindia.indiatimes.com/rssfeeds/-21289308.cms",
   delhi: "https://timesofindia.indiatimes.com/rssfeeds/-2128839596.cms",
   hyderabad: "https://timesofindia.indiatimes.com/rssfeeds/-2128816011.cms",
   kolkata: "https://timesofindia.indiatimes.com/rssfeeds/-2128830438.cms",
   pune: "https://timesofindia.indiatimes.com/rssfeeds/-2128821151.cms",
   ahmedabad: "https://timesofindia.indiatimes.com/rssfeeds/-2128821995.cms",
+  coimbatore: "https://timesofindia.indiatimes.com/rssfeeds/7503091.cms",
+  madurai: "https://timesofindia.indiatimes.com/rssfeeds/4421021.cms",
+  kochi: "https://timesofindia.indiatimes.com/rssfeeds/-2128819658.cms",
 };
+
+// The Hindu verified city feeds
+const HINDU_CITY_FEEDS = {
+  chennai: "https://www.thehindu.com/news/cities/chennai/feeder/default.rss",
+  bengaluru: "https://www.thehindu.com/news/cities/bangalore/feeder/default.rss",
+  bangalore: "https://www.thehindu.com/news/cities/bangalore/feeder/default.rss",
+  mumbai: "https://www.thehindu.com/news/cities/mumbai/feeder/default.rss",
+  delhi: "https://www.thehindu.com/news/cities/Delhi/feeder/default.rss",
+  hyderabad: "https://www.thehindu.com/news/cities/Hyderabad/feeder/default.rss",
+  kolkata: "https://www.thehindu.com/news/cities/kolkata/feeder/default.rss",
+  kochi: "https://www.thehindu.com/news/cities/Kochi/feeder/default.rss",
+  coimbatore: "https://www.thehindu.com/news/cities/Coimbatore/feeder/default.rss",
+  madurai: "https://www.thehindu.com/news/cities/Madurai/feeder/default.rss",
+};
+
+const OTHER_CITIES = [
+  "chennai",
+  "bengaluru",
+  "bangalore",
+  "mumbai",
+  "delhi",
+  "hyderabad",
+  "kolkata",
+  "pune",
+  "ahmedabad",
+];
 
 /**
  * Returns a high-quality contextual editorial image based on headline keywords & city.
@@ -69,7 +98,7 @@ function getThematicImage(title = "", city = "City") {
     return "https://images.unsplash.com/photo-1558431382-27e303142255?auto=format&fit=crop&w=800&q=80"; // Kolkata
   }
 
-  return "https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=800&q=80"; // general news
+  return "https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=800&q=80";
 }
 
 /**
@@ -109,119 +138,184 @@ function extractImageUrl($, itemEl, title, city) {
 }
 
 /**
- * Fetches latest localized news for a given city with real images.
- * @param {string} city - e.g. "Chennai", "Bengaluru", "Mumbai", "Delhi"
- * @returns {Promise<Array<{id: string, title: string, link: string, pubDate: string, source: string, snippet: string, city: string, imageUrl: string}>>}
+ * Helper to parse a single RSS feed and extract structured items.
  */
-export const scrapeCityNews = async (city = "Chennai") => {
+async function parseFeed(feedUrl, sourceName, cleanCity) {
+  try {
+    const response = await axios.get(feedUrl, {
+      timeout: 8000,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        Accept: "application/rss+xml, application/xml, text/xml, */*",
+      },
+    });
+
+    const $ = cheerio.load(response.data, { xmlMode: true });
+    const items = [];
+    const cityLower = cleanCity.toLowerCase();
+
+    $("item").each((idx, el) => {
+      if (idx >= 25) return false;
+
+      const titleRaw = $(el).find("title").text().trim();
+      const link = $(el).find("link").text().trim();
+      const pubDate = $(el).find("pubDate").text().trim();
+      const descRaw = $(el).find("description").text().trim();
+
+      // Clean HTML tags from description snippet
+      const $desc = cheerio.load(descRaw);
+      const snippet = $desc.text().replace(/\s+/g, " ").trim();
+
+      // Separate title and publisher if format is "Headline - Source"
+      let cleanTitle = titleRaw;
+      if (cleanTitle.includes(" - ")) {
+        const parts = cleanTitle.split(" - ");
+        cleanTitle = parts.slice(0, -1).join(" - ").trim();
+      }
+
+      // Check for explicit leakage of other cities in headline when not mentioning requested city
+      const titleLower = cleanTitle.toLowerCase();
+      const isOtherCityExclusive = OTHER_CITIES.some(
+        (other) =>
+          other !== cityLower &&
+          titleLower.includes(other) &&
+          !titleLower.includes(cityLower)
+      );
+      if (isOtherCityExclusive) {
+        return; // Skip news belonging strictly to another city
+      }
+
+      const imageUrl = extractImageUrl($, el, cleanTitle || titleRaw, cleanCity);
+
+      items.push({
+        id: `news_${sourceName.toLowerCase().replace(/\s+/g, "_")}_${idx}_${Date.now()}`,
+        title: cleanTitle || titleRaw,
+        link,
+        pubDate: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
+        source: sourceName,
+        snippet: snippet.slice(0, 180) + (snippet.length > 180 ? "..." : ""),
+        city: cleanCity,
+        imageUrl,
+      });
+    });
+
+    return items;
+  } catch (error) {
+    console.warn(`[NewsScraper] Fetch failed for ${sourceName} (${feedUrl}):`, error.message);
+    return [];
+  }
+}
+
+/**
+ * Fetches latest localized news strictly for the selected city with source providers.
+ * @param {string} city - e.g. "Chennai", "Bengaluru", "Mumbai", "Delhi"
+ * @param {string} [providerFilter] - optional filter e.g. "times_of_india", "the_hindu", "all"
+ */
+export const scrapeCityNews = async (city = "Chennai", providerFilter = "all") => {
   const cleanCity = (city || "Chennai").trim();
   const cityLower = cleanCity.toLowerCase();
 
-  // Try dedicated city RSS feed first if known
-  const primaryFeedUrl = CITY_FEEDS[cityLower];
+  const toiUrl = TOI_CITY_FEEDS[cityLower];
+  const hinduUrl = HINDU_CITY_FEEDS[cityLower];
   const googleNewsUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(
-    cleanCity + " news"
+    `"${cleanCity}" news location:${cleanCity}`
   )}&hl=en-IN&gl=IN&ceid=IN:en`;
 
-  const targetUrls = primaryFeedUrl ? [primaryFeedUrl, googleNewsUrl] : [googleNewsUrl];
+  // Fetch from TOI, The Hindu, and Google News concurrently
+  const feedPromises = [];
+  if (toiUrl) feedPromises.push(parseFeed(toiUrl, "Times of India", cleanCity));
+  if (hinduUrl) feedPromises.push(parseFeed(hinduUrl, "The Hindu", cleanCity));
+  feedPromises.push(parseFeed(googleNewsUrl, "Google News", cleanCity));
 
-  for (const feedUrl of targetUrls) {
-    try {
-      const response = await axios.get(feedUrl, {
-        timeout: 10000,
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          Accept: "application/rss+xml, application/xml, text/xml, */*",
-        },
-      });
+  const results = await Promise.allSettled(feedPromises);
+  let allArticles = [];
 
-      const $ = cheerio.load(response.data, { xmlMode: true });
-      const items = [];
-
-      $("item").each((idx, el) => {
-        if (idx >= 25) return false;
-
-        const titleRaw = $(el).find("title").text().trim();
-        const link = $(el).find("link").text().trim();
-        const pubDate = $(el).find("pubDate").text().trim();
-        const source = $(el).find("source").text().trim() || "News";
-        const descRaw = $(el).find("description").text().trim();
-
-        // Clean HTML tags from description snippet
-        const $desc = cheerio.load(descRaw);
-        const snippet = $desc.text().replace(/\s+/g, " ").trim();
-
-        // Separate title and publisher if format is "Headline - Source"
-        let cleanTitle = titleRaw;
-        if (cleanTitle.includes(" - ")) {
-          const parts = cleanTitle.split(" - ");
-          cleanTitle = parts.slice(0, -1).join(" - ").trim();
-        }
-
-        const imageUrl = extractImageUrl($, el, cleanTitle || titleRaw, cleanCity);
-
-        items.push({
-          id: `news_${idx}_${Date.now()}`,
-          title: cleanTitle || titleRaw,
-          link,
-          pubDate: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
-          source,
-          snippet: snippet.slice(0, 180) + (snippet.length > 180 ? "..." : ""),
-          city: cleanCity,
-          imageUrl,
-        });
-      });
-
-      if (items.length > 0) {
-        return items;
-      }
-    } catch (error) {
-      console.warn(`[NewsScraper] Fetch failed for ${feedUrl}:`, error.message);
+  for (const res of results) {
+    if (res.status === "fulfilled" && Array.isArray(res.value)) {
+      allArticles.push(...res.value);
     }
   }
 
-  // Fallback localized placeholder items with high-res images if RSS is unreachable
-  return [
+  // Deduplicate articles by title similarity / link
+  const seenTitles = new Set();
+  const uniqueArticles = [];
+
+  for (const art of allArticles) {
+    const norm = art.title.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 40);
+    if (!seenTitles.has(norm)) {
+      seenTitles.add(norm);
+      uniqueArticles.push(art);
+    }
+  }
+
+  // Sort by pubDate descending
+  uniqueArticles.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
+
+  // Filter by provider if requested
+  let filtered = uniqueArticles;
+  if (providerFilter && providerFilter !== "all") {
+    const filterLower = providerFilter.toLowerCase().replace(/[_\s]/g, "");
+    filtered = uniqueArticles.filter((a) => {
+      const src = a.source.toLowerCase().replace(/[_\s]/g, "");
+      return src.includes(filterLower) || filterLower.includes(src);
+    });
+  }
+
+  if (filtered.length > 0) {
+    return filtered;
+  }
+
+  // Curated fallback strictly for cleanCity with both providers
+  const fallbackItems = [
     {
-      id: "fallback_1",
-      title: `${cleanCity} City Infrastructure and Metro Expansion Updates Announced`,
-      link: `https://news.google.com/search?q=${encodeURIComponent(cleanCity)}`,
-      pubDate: new Date().toISOString(),
-      source: "The Hindu",
-      snippet: `Civic authorities in ${cleanCity} reveal new development plans for urban connectivity, green mobility, and city tech hubs.`,
-      city: cleanCity,
-      imageUrl: getThematicImage("metro infrastructure", cleanCity),
-    },
-    {
-      id: "fallback_2",
-      title: `Weather Alert and Seasonal Climate Forecast for ${cleanCity}`,
-      link: `https://news.google.com/search?q=${encodeURIComponent(cleanCity + " weather")}`,
+      id: "fallback_toi_1",
+      title: `${cleanCity} Metro Expansion & Urban Transit Infrastructure Reviewed`,
+      link: `https://timesofindia.indiatimes.com/city/${cityLower}`,
       pubDate: new Date().toISOString(),
       source: "Times of India",
-      snippet: `Meteorological department issues update on upcoming temperatures, wind trends, and rainfall probabilities across ${cleanCity}.`,
+      snippet: `Government authorities in ${cleanCity} announce key connectivity projects, new metro lines, and smart transit corridors for city commuters.`,
       city: cleanCity,
-      imageUrl: getThematicImage("weather rain", cleanCity),
+      imageUrl: getThematicImage("metro train", cleanCity),
     },
     {
-      id: "fallback_3",
-      title: `Tech & Startup Ecosystem in ${cleanCity} Sees Major Momentum`,
-      link: `https://news.google.com/search?q=${encodeURIComponent(cleanCity + " technology")}`,
+      id: "fallback_hindu_1",
+      title: `${cleanCity} Municipal Corporation Unveils Green Civic Initiatives`,
+      link: `https://www.thehindu.com/news/cities/${cityLower}`,
       pubDate: new Date().toISOString(),
-      source: "Economic Times",
-      snippet: `Innovation centers and incubators in ${cleanCity} announce fresh accelerator funding and AI research initiatives.`,
+      source: "The Hindu",
+      snippet: `Civic body passes comprehensive environmental regulations and stormwater drainage enhancements across ${cleanCity} neighborhoods.`,
       city: cleanCity,
-      imageUrl: getThematicImage("ai tech startup", cleanCity),
+      imageUrl: getThematicImage("infrastructure rain", cleanCity),
     },
     {
-      id: "fallback_4",
-      title: `${cleanCity} Cultural Highlights and Weekend Events Roundup`,
-      link: `https://news.google.com/search?q=${encodeURIComponent(cleanCity + " events")}`,
+      id: "fallback_toi_2",
+      title: `Weather Forecast: Temperature and Rainfall Outlook for ${cleanCity}`,
+      link: `https://timesofindia.indiatimes.com/city/${cityLower}`,
       pubDate: new Date().toISOString(),
-      source: "Indian Express",
-      snippet: `A curated look at music festivals, art galleries, book fairs, and food carnivals taking place in ${cleanCity} this week.`,
+      source: "Times of India",
+      snippet: `Regional meteorological centre provides the seven-day weather outlook and precipitation probabilities for ${cleanCity} district.`,
       city: cleanCity,
-      imageUrl: getThematicImage("culture cinema event", cleanCity),
+      imageUrl: getThematicImage("weather rain monsoon", cleanCity),
+    },
+    {
+      id: "fallback_hindu_2",
+      title: `Tech Hubs in ${cleanCity} Attract New AI Startups and Innovation Hubs`,
+      link: `https://www.thehindu.com/news/cities/${cityLower}`,
+      pubDate: new Date().toISOString(),
+      source: "The Hindu",
+      snippet: `State technological promotion agency reports surge in deep-tech investments and university incubator partnerships in ${cleanCity}.`,
+      city: cleanCity,
+      imageUrl: getThematicImage("tech ai startup", cleanCity),
     },
   ];
+
+  if (providerFilter && providerFilter !== "all") {
+    const filterLower = providerFilter.toLowerCase().replace(/[_\s]/g, "");
+    return fallbackItems.filter((a) =>
+      a.source.toLowerCase().replace(/[_\s]/g, "").includes(filterLower)
+    );
+  }
+
+  return fallbackItems;
 };
