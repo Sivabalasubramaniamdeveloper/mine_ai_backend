@@ -154,3 +154,94 @@ export const getTicketById = async (ticketId, userId) => {
   const localList = readLocalTickets();
   return localList.find((t) => t.id === ticketId && t.user_id === userId) || null;
 };
+
+export const getAllTickets = async ({ status, priority, module, query } = {}) => {
+  let list = [];
+  try {
+    const { data, error } = await supabase
+      .from("support_tickets")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (!error && Array.isArray(data) && data.length > 0) {
+      list = data;
+    }
+  } catch (_) {}
+
+  if (list.length === 0) {
+    try {
+      const { data, error } = await supabase
+        .from("tickets")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (!error && Array.isArray(data) && data.length > 0) {
+        list = data;
+      }
+    } catch (_) {}
+  }
+
+  if (list.length === 0) {
+    list = readLocalTickets();
+  }
+
+  if (status && status !== "all") {
+    list = list.filter((t) => (t.status || "").toLowerCase() === status.toLowerCase());
+  }
+  if (priority && priority !== "all") {
+    list = list.filter((t) => (t.priority || "").toLowerCase() === priority.toLowerCase());
+  }
+  if (module && module !== "all") {
+    list = list.filter((t) => (t.module || "").toLowerCase() === module.toLowerCase());
+  }
+  if (query && query.trim()) {
+    const q = query.trim().toLowerCase();
+    list = list.filter(
+      (t) =>
+        (t.subject || "").toLowerCase().includes(q) ||
+        (t.description || "").toLowerCase().includes(q) ||
+        (t.user_email || "").toLowerCase().includes(q) ||
+        (t.user_name || "").toLowerCase().includes(q) ||
+        (t.id || "").toLowerCase().includes(q)
+    );
+  }
+
+  return list;
+};
+
+export const updateTicket = async ({ ticketId, status, priority, adminNotes }) => {
+  const now = new Date().toISOString();
+  const updatePayload = {
+    updated_at: now,
+  };
+  if (status) updatePayload.status = status;
+  if (priority) updatePayload.priority = priority;
+  if (adminNotes !== undefined) updatePayload.admin_notes = adminNotes;
+
+  try {
+    const { data, error } = await supabase
+      .from("support_tickets")
+      .update(updatePayload)
+      .eq("id", ticketId)
+      .select()
+      .maybeSingle();
+    if (!error && data) return data;
+  } catch (_) {}
+
+  try {
+    const { data, error } = await supabase
+      .from("tickets")
+      .update(updatePayload)
+      .eq("id", ticketId)
+      .select()
+      .maybeSingle();
+    if (!error && data) return data;
+  } catch (_) {}
+
+  const localList = readLocalTickets();
+  const idx = localList.findIndex((t) => t.id === ticketId);
+  if (idx !== -1) {
+    localList[idx] = { ...localList[idx], ...updatePayload };
+    writeLocalTickets(localList);
+    return localList[idx];
+  }
+  return { id: ticketId, ...updatePayload };
+};

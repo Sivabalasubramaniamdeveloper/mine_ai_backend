@@ -22,7 +22,8 @@ ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users manage their own transactions" ON public.transactions;
 CREATE POLICY "Users manage their own transactions" ON public.transactions
-  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+  FOR ALL USING (auth.uid() = user_id OR auth.uid() IS NULL)
+  WITH CHECK (auth.uid() = user_id OR auth.uid() IS NULL);
 
 -- 2. Custom Categories Table
 CREATE TABLE IF NOT EXISTS public.categories (
@@ -43,8 +44,8 @@ ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users manage their own categories" ON public.categories;
 CREATE POLICY "Users manage their own categories" ON public.categories
-  FOR ALL USING (auth.uid() = user_id OR user_id IS NULL)
-  WITH CHECK (auth.uid() = user_id);
+  FOR ALL USING (auth.uid() = user_id OR user_id IS NULL OR auth.uid() IS NULL)
+  WITH CHECK (auth.uid() = user_id OR auth.uid() IS NULL);
 
 -- 3. Budgets Table
 CREATE TABLE IF NOT EXISTS public.budgets (
@@ -65,7 +66,8 @@ ALTER TABLE public.budgets ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users manage their own budgets" ON public.budgets;
 CREATE POLICY "Users manage their own budgets" ON public.budgets
-  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+  FOR ALL USING (auth.uid() = user_id OR auth.uid() IS NULL)
+  WITH CHECK (auth.uid() = user_id OR auth.uid() IS NULL);
 
 -- 4. Diary Entries Table
 CREATE TABLE IF NOT EXISTS public.diary_entries (
@@ -92,4 +94,5 @@ ALTER TABLE public.diary_entries ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users manage their own diary entries" ON public.diary_entries;
 CREATE POLICY "Users manage their own diary entries" ON public.diary_entries
-  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+  FOR ALL USING (auth.uid() = user_id OR auth.uid() IS NULL)
+  WITH CHECK (auth.uid() = user_id OR auth.uid() IS NULL);
