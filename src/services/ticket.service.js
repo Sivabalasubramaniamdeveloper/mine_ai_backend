@@ -61,11 +61,18 @@ export const createTicket = async ({
     updated_at: now,
   };
 
-  // 1. Try Supabase
+  // 1. Persist directly to Supabase DB
   try {
-    await supabase.from("tickets").insert(ticketData);
-  } catch (_) {
-    // If table not set up yet in Supabase, local store guarantees zero disruption
+    const { error: dbError } = await supabase
+      .from("tickets")
+      .upsert(ticketData, { onConflict: "id" });
+    if (dbError) {
+      console.error("[Ticket Service] Supabase DB insert error:", dbError.message);
+    } else {
+      console.log(`[Ticket Service] Ticket ${ticketId} successfully saved to Supabase DB.`);
+    }
+  } catch (err) {
+    console.error("[Ticket Service] Unexpected error saving ticket to Supabase:", err.message);
   }
 
   // 2. Always persist to local store
@@ -127,10 +134,15 @@ export const getUserTickets = async (userId) => {
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
-    if (!error && Array.isArray(data) && data.length > 0) {
+    if (!error && Array.isArray(data)) {
       return data;
     }
-  } catch (_) {}
+    if (error) {
+      console.error("[Ticket Service] Supabase getUserTickets error:", error.message);
+    }
+  } catch (err) {
+    console.error("[Ticket Service] getUserTickets query error:", err.message);
+  }
 
   // Fallback to local store filtered by userId
   const localList = readLocalTickets();
