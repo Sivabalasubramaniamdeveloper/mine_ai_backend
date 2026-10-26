@@ -57,8 +57,10 @@ app.get("/health/database", async (req, res) => {
   }
 });
 
+
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/user", userRoutes);
+
 app.use("/api/v1/users/api-keys", apiKeyRoutes);
 app.use("/api/v1/ai", aiRoutes);
 app.use("/api/v1/weather", weatherRoutes);
