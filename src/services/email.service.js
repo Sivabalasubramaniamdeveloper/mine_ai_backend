@@ -95,6 +95,11 @@ export const verifyTransporter = async () => {
  * @returns {Promise<boolean>}
  */
 export const sendMail = async ({ to, subject, title, message, extraHtml = "" }) => {
+  if (!to || typeof to !== "string" || !to.trim() || !to.includes("@")) {
+    console.warn(`[EmailService] Invalid recipient email passed to sendMail: "${to}". Email sending skipped.`);
+    return false;
+  }
+  const cleanTo = to.trim();
   const safeTitle = escapeHtml(title);
   const safeMessage = escapeHtml(message);
   const text = `${String(title)}\n\n${String(message)}\n\nNotice: If this email arrived in your Spam folder, please mark it as Not Spam.\n\nMineAI Support: ${env.supportEmail}`;
@@ -119,13 +124,15 @@ export const sendMail = async ({ to, subject, title, message, extraHtml = "" }) 
         </body>
         </html>`;
 
+  console.log(`[EmailService] Attempting to send email. Provider: ${env.resendApiKey ? "Resend" : "Nodemailer SMTP"}, To: "${cleanTo}", Subject: "${subject}"`);
+
   if (env.resendApiKey) {
     try {
-      const result = await sendWithResend({ to, subject, text, html });
-      console.log(`[EmailService] Resend accepted email to ${to}. MessageId: ${result.messageId}`);
+      const result = await sendWithResend({ to: cleanTo, subject, text, html });
+      console.log(`[EmailService] Resend accepted email to ${cleanTo}. MessageId: ${result.messageId}`);
       return result;
     } catch (error) {
-      console.error(`[EmailService] Resend failed for ${to}:`, error.response?.data || error.message);
+      console.error(`[EmailService] Resend failed for ${cleanTo}:`, error.response?.data || error.message);
       throw new Error("Transactional email delivery failed. Check RESEND_API_KEY and that MAIL_FROM uses a verified Resend domain.");
     }
   }
@@ -143,7 +150,7 @@ export const sendMail = async ({ to, subject, title, message, extraHtml = "" }) 
       from: env.mailFrom,
       sender: env.mailUser,
       replyTo: env.supportEmail || env.mailUser,
-      to,
+      to: cleanTo,
       subject,
       text,
       messageId: msgId,
@@ -155,10 +162,10 @@ export const sendMail = async ({ to, subject, title, message, extraHtml = "" }) 
       html,
     });
 
-    console.log(`[EmailService] Email sent successfully to ${to}. MessageId: ${info.messageId}`);
+    console.log(`[EmailService] Email sent successfully to ${cleanTo}. MessageId: ${info.messageId}`);
     return true;
   } catch (error) {
-    console.error(`[EmailService] Failed to send email to ${to}:`, error.message);
+    console.error(`[EmailService] Failed to send email to ${cleanTo}:`, error.message);
     throw error;
   }
 };

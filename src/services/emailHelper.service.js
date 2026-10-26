@@ -397,20 +397,6 @@ export const sendDirectEmail = async ({
     ? keyRow.key_name.trim()
     : userEmail;
 
-  // Create transporter for this user's Gmail with explicit host, port and timeout settings
-  const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
-    auth: {
-      user: senderEmail,
-      pass: cleanPass,
-    },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-  });
-
   const safeBody = escapeHtml(body).replace(/\n/g, "<br>");
   const mailOptions = {
     from: `"${user?.full_name || "MineAI User"}" <${senderEmail}>`,
@@ -419,37 +405,70 @@ export const sendDirectEmail = async ({
     to: to.trim(),
     subject: subject.trim(),
     text: body,
-    headers: {
-      "X-Mailer": "MineAI Email Assistant",
-      "X-Priority": "3",
-      "Importance": "Normal",
-    },
-    html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;color:#1e293b;line-height:1.65;"><div>${safeBody}</div></body></html>`,
+    html: `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${escapeHtml(subject)}</title></head><body style="margin:0;padding:20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;color:#1e293b;line-height:1.65;background-color:#ffffff;"><div style="max-width:600px;">${safeBody}</div></body></html>`,
   };
 
   if (cc && cc.trim()) {
     mailOptions.cc = cc.trim();
   }
 
+  const sendWithPort = async (port, secure) => {
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port,
+      secure,
+      auth: {
+        user: senderEmail,
+        pass: cleanPass,
+      },
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 10000,
+    });
+    return await transporter.sendMail(mailOptions);
+  };
+
+  let info;
   try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`[EmailHelper] Direct email sent from ${userEmail} to ${to}: ${info.messageId}`);
-    return {
-      success: true,
-      accepted: info.accepted || [],
-      rejected: info.rejected || [],
-      deliveryStatus: (info.rejected || []).length ? "partially_accepted" : "accepted_by_mail_server",
-      deliveryNotice: "The mail server accepted this message. Delivery to Inbox cannot be guaranteed; recipients may need to check Spam or Junk.",
-      messageId: info.messageId,
-      from: userEmail,
-      to,
-      cc,
-      subject,
-    };
-  } catch (error) {
-    console.error("[EmailHelper] Failed to send email via SMTP:", error.message);
-    const err = new Error(`Failed to send email: ${error.message}`);
-    err.statusCode = 500;
-    throw err;
+    // Try standard Gmail SSL port 465 first
+    info = await sendWithPort(465, true);
+  } catch (err465) {
+    console.warn(`[EmailHelper] Port 465 attempt failed: ${err465.message}. Retrying on port 587 (STARTTLS)...`);
+    try {
+      // Fallback to TLS port 587
+      info = await sendWithPort(587, false);
+    } catch (err587) {
+      console.error(`[EmailHelper] Port 587 attempt also failed: ${err587.message}`);
+      const isTimeout =
+        err465.message?.includes("timeout") ||
+        err587.message?.includes("timeout") ||
+        err465.code === "ETIMEDOUT" ||
+        err587.code === "ETIMEDOUT";
+
+      if (isTimeout) {
+        const err = new Error(
+          "Connection timeout connecting to smtp.gmail.com. Cloud platforms like Railway block outbound SMTP ports (465/587). Please request SMTP unblock in Railway settings or use Railway Pro."
+        );
+        err.statusCode = 504;
+        throw err;
+      }
+      const err = new Error(`Failed to send email: ${err587.message}`);
+      err.statusCode = 500;
+      throw err;
+    }
   }
+
+  console.log(`[EmailHelper] Direct email sent from ${userEmail} to ${to}: ${info.messageId}`);
+  return {
+    success: true,
+    accepted: info.accepted || [],
+    rejected: info.rejected || [],
+    deliveryStatus: (info.rejected || []).length ? "partially_accepted" : "accepted_by_mail_server",
+    deliveryNotice: "The mail server accepted this message. Delivery to Inbox cannot be guaranteed; recipients may need to check Spam or Junk.",
+    messageId: info.messageId,
+    from: userEmail,
+    to,
+    cc,
+    subject,
+  };
 };

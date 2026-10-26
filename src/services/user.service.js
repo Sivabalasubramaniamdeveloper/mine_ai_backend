@@ -104,18 +104,47 @@ export const updateMyProfile = async (userId, data) => {
 export const getAvailablePlans = async () => getPlanCatalog();
 
 // Persists a plan change first, then notifies the account email without delaying the API response.
-export const updateMyPlan = async (userId, planId) => {
+export const updateMyPlan = async (userId, planId, authEmail = null) => {
   const currentUser = await getUserProfileById(userId);
   const user = await assignUserPlan(userId, planId);
   const tierCode = user.plans?.tier_code;
   const planMap = { 0: "Basic", 1: "Pro", 2: "Premium" };
   const planName = user.plans?.name || planMap[tierCode] || "updated plan";
-  const targetEmail = user.email || currentUser.email;
+
+  // Prioritize authenticated user's email, then DB user profile email
+  let targetEmail = authEmail || user.email || currentUser?.email;
+
+  // If user profile in public.users has no email or an outdated email, update it with authEmail
+  if (authEmail && (!user.email || user.email !== authEmail)) {
+    try {
+      await updateUserProfile(userId, { email: authEmail });
+      user.email = authEmail;
+    } catch (syncErr) {
+      console.warn("[UserService] Could not sync user email to profile:", syncErr.message);
+    }
+  }
+
+  // If still no email found, attempt lookup directly via Supabase Auth admin
+  if (!targetEmail) {
+    try {
+      const { data: authData } = await supabase.auth.admin.getUserById(userId);
+      if (authData?.user?.email) {
+        targetEmail = authData.user.email;
+      }
+    } catch (authErr) {
+      console.warn("[UserService] Could not lookup user in Supabase auth:", authErr.message);
+    }
+  }
+
+  console.log(`[UserService] Plan changed to "${planName}" for user ${userId}. Target email: "${targetEmail}"`);
 
   if (targetEmail) {
     void sendPlanChangedEmail(targetEmail, planName).catch((error) =>
-      console.error("[UserService] Could not send plan change email:", error.message),
+      console.error(`[UserService] Could not send plan change email to ${targetEmail}:`, error.message),
     );
+  } else {
+    console.warn(`[UserService] No email address found for user ${userId}; skipping plan change email.`);
   }
+
   return user;
 };
