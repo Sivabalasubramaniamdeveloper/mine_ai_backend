@@ -1,7 +1,9 @@
 import { z } from "zod";
 
 export const createApiKeySchema = z.object({
-  provider_id: z.string().uuid("Invalid provider ID"),
+  provider_id: z.string().uuid("Invalid provider ID").optional(),
+
+  provider_name: z.string().trim().optional(),
 
   key_name: z
     .string()
@@ -12,8 +14,8 @@ export const createApiKeySchema = z.object({
   api_key: z
     .string()
     .trim()
-    .min(10, "API key is invalid")
-    .max(1000, "API key is too long"),
+    .min(4, "Key value is too short")
+    .max(1000, "Key value is too long"),
 });
 
 export const updateApiKeySchema = z.object({

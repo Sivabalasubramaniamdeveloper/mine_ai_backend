@@ -2,6 +2,7 @@ import * as aiService from "../services/ai.service.js";
 
 export const chat = async (req, res, next) => {
   try {
+    console.log(req);
     const result = await aiService.chat({
       userId: req.user.id,
       sessionId: req.body.session_id ?? null,

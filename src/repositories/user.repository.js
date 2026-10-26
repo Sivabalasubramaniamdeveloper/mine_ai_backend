@@ -64,3 +64,37 @@ export const updateUserProfile = async (userId, userData) => {
 
   return data;
 };
+
+// Return only plan fields used by the application instead of exposing unrelated catalog data.
+export const getPlanCatalog = async () => {
+  const { data, error } = await supabase
+    .from("plans")
+    .select("id, tier_code")
+    .order("tier_code");
+  if (error) throw error;
+  return data ?? [];
+};
+
+// Updating and selecting in one request lets the client immediately render the persisted assignment.
+export const assignUserPlan = async (userId, planId) => {
+  const { data: plan, error: planError } = await supabase
+    .from("plans")
+    .select("id")
+    .eq("id", planId)
+    .maybeSingle();
+  if (planError) throw planError;
+  if (!plan) {
+    const error = new Error("Selected plan was not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const { data, error } = await supabase
+    .from("users")
+    .update({ plan_id: planId })
+    .eq("id", userId)
+    .select("id, email, credits, plan_id, plans(tier_code)")
+    .single();
+  if (error) throw error;
+  return data;
+};

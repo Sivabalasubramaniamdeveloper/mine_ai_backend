@@ -24,7 +24,17 @@ export const updateUserSchema = z.object({
 
   language: z.string().trim().min(2).max(10).optional(),
 
-  avatar_url: z.string().url().optional(),
+  avatar_url: z.string().optional(),
 
-  phone: z.string().trim().max(20).optional(),
+  phone: z
+    .string()
+    .trim()
+    .regex(/^[6-9]\d{9}$/, "Phone number must be a valid 10-digit Indian number")
+    .optional()
+    .nullable(),
+});
+
+// Accept only a plan UUID; the service verifies that it exists before assigning it.
+export const updateUserPlanSchema = z.object({
+  plan_id: z.string().uuid(),
 });

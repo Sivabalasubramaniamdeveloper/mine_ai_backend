@@ -1,157 +1,204 @@
 import supabase from "../config/supabase.js";
-import {
-  createUserProfile,
-  deleteUserProfile,
-} from "../repositories/user.repository.js";
-import {
-  createUserSettings,
-  deleteUserSettings,
-} from "../repositories/user-settings.repository.js";
+import { createUserProfile } from "../repositories/user.repository.js";
+import { createUserSettings } from "../repositories/user-settings.repository.js";
 import supabaseAuth from "../config/supabase-auth.js";
+import { sendWelcomeEmails } from "./email.service.js";
+import fcmService from "./fcm.service.js";
 
-export const register = async (data) => {
-  const {
-    email,
-    password,
-    username,
-    full_name,
-    dob,
-    gender,
-    country_code,
-    timezone,
-    language,
-  } = data;
+// Creates the app profile after Supabase confirms the user can authenticate.
+const ensureApplicationProfile = async (authUser) => {
+  const { data: existing, error: lookupError } = await supabase
+    .from("users")
+    .select("id")
+    .eq("id", authUser.id)
+    .maybeSingle();
+  if (lookupError) throw lookupError;
 
-  let authUser = null;
-  let profileCreated = false;
-  let settingsCreated = false;
+  if (!existing) {
+    const { data: basicPlan, error: planError } = await supabase
+      .from("plans")
+      .select("id")
+      .eq("tier_code", 0)
+      .single();
+    if (planError) throw planError;
 
-  try {
-    // 1. Create Supabase Auth user
-    const { data: authData, error: authError } =
-      await supabase.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-      });
-
-    if (authError) {
-      if (
-        authError.message ===
-        "A user with this email address has already been registered"
-      ) {
-        const error = new Error("Email address is already registered");
-        error.statusCode = 409;
-        throw error;
-      }
-
-      throw new Error(authError.message);
-    }
-
-    authUser = authData.user;
-
-    // 2. Create application user
-    const user = await createUserProfile({
+    const metadata = authUser.user_metadata ?? {};
+    const localPart = (authUser.email ?? "user").split("@")[0];
+    const usernameBase = (metadata.username || localPart)
+      .replace(/[^a-zA-Z0-9_]/g, "_")
+      .slice(0, 20);
+    const username = `${usernameBase}_${authUser.id.slice(0, 8)}`;
+    const profile = {
       id: authUser.id,
       email: authUser.email,
       username,
-      full_name,
-      dob,
-      gender,
-      country_code,
-      timezone,
-      language: language || "en",
+      full_name: metadata.full_name || localPart,
+      dob: metadata.dob || "2000-01-01",
+      gender: metadata.gender || "prefer_not_to_say",
+      country_code: metadata.country_code || "IN",
+      timezone: metadata.timezone || "UTC",
+      language: metadata.language || "en",
       credits: 100,
-    });
-    profileCreated = true;
-    // ------------------------------------------------
-    // 3. Create user_settings
-    // ------------------------------------------------
-    const settings = await createUserSettings(authUser.id);
-
-    settingsCreated = true;
-    // 3. Return result
-    return {
-      user,
-      settings,
+      plan_id: basicPlan.id,
     };
-  } catch (error) {
-    console.log("Registration error:");
-    console.log("Message:", error.message);
-    console.log("Code:", error.code);
-    console.log("Details:", error.details);
-    console.log("Hint:", error.hint);
-    let finalError = error;
 
-    if (error.code === "23505") {
-      const details = error.message || "";
-
-      if (details.includes("users_email_key")) {
-        finalError = new Error("Email address is already registered");
-        finalError.statusCode = 409;
-      } else if (details.includes("users_username_key")) {
-        finalError = new Error("Username is already taken");
-        finalError.statusCode = 409;
-      } else {
-        finalError = new Error("A unique value already exists");
-        finalError.statusCode = 409;
-      }
+    // A short user ID suffix keeps generated usernames unique across signups.
+    try {
+      await createUserProfile(profile);
+      // A verified first login creates the profile and sends one welcome/Basic-plan email pair.
+      void sendWelcomeEmails(authUser.email).catch((error) =>
+        console.error("Could not send account welcome emails:", error.message),
+      );
+    } catch (error) {
+      // Concurrent first logins can race on the same user ID; accept only that completed insert.
+      if (error.code !== "23505") throw error;
+      const { data: concurrentProfile, error: concurrentLookupError } =
+        await supabase
+          .from("users")
+          .select("id")
+          .eq("id", authUser.id)
+          .maybeSingle();
+      if (concurrentLookupError || !concurrentProfile) throw error;
     }
-    // ------------------------------------------------
-    // Rollback public.users
-    // ------------------------------------------------
+  }
 
-    if (profileCreated === true && authUser?.id) {
-      try {
-        await deleteUserProfile(authUser.id);
-      } catch (rollbackError) {
-        console.error("User profile rollback failed:", rollbackError.message);
-      }
+  const { data: settings, error: settingsLookupError } = await supabase
+    .from("user_settings")
+    .select("user_id")
+    .eq("user_id", authUser.id)
+    .maybeSingle();
+  if (settingsLookupError) throw settingsLookupError;
+  if (!settings) {
+    try {
+      await createUserSettings(authUser.id);
+    } catch (error) {
+      // A parallel first login may have created the settings row after the lookup.
+      if (error.code !== "23505") throw error;
     }
-
-    // ------------------------------------------------
-    // Rollback Supabase Auth user
-    // ------------------------------------------------
-    if (authUser?.id) {
-      try {
-        await supabase.auth.admin.deleteUser(authUser.id);
-      } catch (rollbackError) {
-        console.error("Auth rollback failed:", rollbackError.message);
-      }
-    }
-
-    throw finalError;
   }
 };
 
-export const login = async (data) => {
-  const { email, password } = data;
+// Authenticates with Supabase, rejects unverified email, then initializes app records.
+export const login = async ({ email, password, fcm_token, push_token }) => {
+  const { data, error } = await supabaseAuth.auth.signInWithPassword({
+    email,
+    password,
+  });
 
-  const { data: authData, error: authError } =
-    await supabaseAuth.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-  if (authError) {
-    const error = new Error("Invalid email or password");
-
-    error.statusCode = 401;
-
-    throw error;
+  if (error) {
+    if (/email not confirmed/i.test(error.message)) {
+      const unverified = new Error("Email address has not been verified");
+      unverified.statusCode = 403;
+      unverified.code = "EMAIL_NOT_CONFIRMED";
+      throw unverified;
+    }
+    const invalidCredentials = new Error("Invalid email or password");
+    invalidCredentials.statusCode = 401;
+    throw invalidCredentials;
   }
 
-  return {
-    user: {
-      id: authData.user.id,
-      email: authData.user.email,
-    },
+  await ensureApplicationProfile(data.user);
 
-    session: {
-      access_token: authData.session.access_token,
-      refresh_token: authData.session.refresh_token,
-      expires_at: authData.session.expires_at,
-      expires_in: authData.session.expires_in,
+  // Sync active FCM token if provided in login request
+  const activeToken = fcm_token || push_token;
+  if (activeToken) {
+    try {
+      await supabase.from("user_devices").upsert(
+        {
+          user_id: data.user.id,
+          device_id: data.user.id,
+          push_token: activeToken,
+          is_active: true,
+          last_active_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,device_id" }
+      );
+    } catch (tokenErr) {
+      console.warn("[Auth Login] Error saving device token:", tokenErr.message);
+    }
+  }
+
+  // Trigger Welcome Push Notification from backend
+  const displayName = data.user.user_metadata?.full_name || (data.user.email ? data.user.email.split("@")[0] : "Friend");
+  fcmService.sendNotificationToUser({
+    userId: data.user.id,
+    title: "Welcome to Mine AI! 🚀",
+    body: `Welcome back, ${displayName}! Your AI assistant and modules are ready.`,
+    data: {
+      type: "login_welcome",
+      screen: "home",
+      userId: data.user.id,
     },
+  }).catch((err) => console.log("[FCM Login Welcome Note]", err.message));
+
+  const ONE_WEEK_SECONDS = 7 * 24 * 60 * 60; // 604800 seconds (1 week)
+  const expiresAt = Math.floor(Date.now() / 1000) + ONE_WEEK_SECONDS;
+
+  return {
+    user: { id: data.user.id, email: data.user.email },
+    session: {
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+      expires_at: expiresAt,
+      expires_in: ONE_WEEK_SECONDS,
+    },
+  };
+};
+
+// Exchanges a refresh token and returns the rotated Supabase session.
+export const refreshSession = async (refreshToken) => {
+  const { data, error } = await supabaseAuth.auth.refreshSession({
+    refresh_token: refreshToken,
+  });
+  if (error || !data.session) {
+    const invalidRefresh = new Error(
+      "Refresh token is invalid or expired. Please log in again.",
+    );
+    invalidRefresh.statusCode = 401;
+    invalidRefresh.code = "INVALID_REFRESH_TOKEN";
+    throw invalidRefresh;
+  }
+
+  const ONE_WEEK_SECONDS = 7 * 24 * 60 * 60;
+  const expiresAt = Math.floor(Date.now() / 1000) + ONE_WEEK_SECONDS;
+
+  return {
+    access_token: data.session.access_token,
+    refresh_token: data.session.refresh_token,
+    token_type: data.session.token_type,
+    expires_in: ONE_WEEK_SECONDS,
+    expires_at: expiresAt,
+    user: { id: data.user.id, email: data.user.email },
+  };
+};
+
+// Requests a password recovery link or token for the provided email address.
+export const forgotPassword = async ({ email }) => {
+  if (!email || !email.trim()) {
+    const err = new Error("Email address is required");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    const { error } = await supabaseAuth.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo:
+        process.env.PASSWORD_RECOVERY_REDIRECT_URI ||
+        "mineai://reset-password",
+    });
+
+    if (error) {
+      console.warn("Supabase resetPasswordForEmail notice:", error.message);
+    }
+  } catch (err) {
+    console.warn("Forgot password dispatch warning:", err.message);
+  }
+
+  // Always return a generic success response to prevent email enumeration
+  return {
+    success: true,
+    message: "If an account exists with this email, password reset instructions have been sent.",
   };
 };
