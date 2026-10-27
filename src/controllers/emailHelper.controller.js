@@ -33,6 +33,18 @@ export const getSmtpStatus = async (req, res, next) => {
   }
 };
 
+export const getSmtpCredentials = async (req, res, next) => {
+  try {
+    const data = await emailHelperService.getSmtpCredentials(req.user.id);
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const saveSmtpConfig = async (req, res, next) => {
   try {
     const result = await emailHelperService.saveSmtpConfig(req.user.id, {

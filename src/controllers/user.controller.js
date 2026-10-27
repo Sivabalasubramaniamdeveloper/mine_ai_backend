@@ -51,7 +51,7 @@ export const getAvailablePlans = async (req, res, next) => {
 // Updates only the authenticated user's plan and returns the persisted result.
 export const updateMyPlan = async (req, res, next) => {
   try {
-    const userEmail = req.user?.email || req.user?.user_metadata?.email;
+    const userEmail = req.body?.email || req.user?.email || req.user?.user_metadata?.email;
     const user = await userService.updateMyPlan(req.user.id, req.body.plan_id, userEmail);
     return res.status(200).json({ success: true, data: { user } });
   } catch (error) {

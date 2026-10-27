@@ -138,10 +138,22 @@ export const updateMyPlan = async (userId, planId, authEmail = null) => {
 
   console.log(`[UserService] Plan changed to "${planName}" for user ${userId}. Target email: "${targetEmail}"`);
 
-  if (targetEmail) {
+  if (targetEmail && targetEmail !== env.mailUser && targetEmail.includes("@")) {
+    console.log(`[UserService] Sending plan changed email to user: "${targetEmail}" from: "${env.mailUser}"`);
     void sendPlanChangedEmail(targetEmail, planName).catch((error) =>
       console.error(`[UserService] Could not send plan change email to ${targetEmail}:`, error.message),
     );
+  } else if (targetEmail === env.mailUser) {
+    console.warn(`[UserService] Target email matched support email "${env.mailUser}". Querying distinct user email from database.`);
+    const { data: dbUser } = await supabase.from("users").select("email").eq("id", userId).maybeSingle();
+    if (dbUser?.email && dbUser.email !== env.mailUser && dbUser.email.includes("@")) {
+      console.log(`[UserService] Sending plan changed email to user: "${dbUser.email}"`);
+      void sendPlanChangedEmail(dbUser.email, planName).catch((error) =>
+        console.error(`[UserService] Could not send plan change email to ${dbUser.email}:`, error.message),
+      );
+    } else {
+      console.warn(`[UserService] No valid user recipient email found for user ${userId}; skipping email.`);
+    }
   } else {
     console.warn(`[UserService] No email address found for user ${userId}; skipping plan change email.`);
   }

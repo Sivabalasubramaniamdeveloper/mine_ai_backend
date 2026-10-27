@@ -221,6 +221,58 @@ export const getSmtpConfigStatus = async (userId) => {
 };
 
 /**
+ * Retrieves the decrypted SMTP credentials for direct client-side delivery.
+ * This avoids cloud host SMTP port blocks (e.g. Railway 465/587).
+ */
+export const getSmtpCredentials = async (userId) => {
+  const providerId = await getSmtpProviderId();
+  const { data: keyRow } = await supabase
+    .from("user_api_keys")
+    .select("id, encrypted_key, key_name, is_active")
+    .eq("user_id", userId)
+    .eq("provider_id", providerId)
+    .eq("is_active", true)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!keyRow) {
+    return {
+      is_configured: false,
+      email: null,
+      sender_name: "MineAI User",
+      app_password: null,
+    };
+  }
+
+  let decryptedPassword;
+  try {
+    decryptedPassword = decrypt(keyRow.encrypted_key);
+  } catch {
+    const err = new Error("Could not decrypt saved app password");
+    err.statusCode = 500;
+    throw err;
+  }
+
+  const { data: user } = await supabase
+    .from("users")
+    .select("email, full_name")
+    .eq("id", userId)
+    .maybeSingle();
+
+  const senderEmail = (keyRow.key_name && keyRow.key_name.includes("@"))
+    ? keyRow.key_name.trim()
+    : user?.email;
+
+  return {
+    is_configured: true,
+    email: senderEmail,
+    sender_name: user?.full_name || "MineAI User",
+    app_password: decryptedPassword.replace(/\s+/g, ""),
+  };
+};
+
+/**
  * 3. Save or update user's email App Password
  */
 export const saveSmtpConfig = async (userId, { app_password, key_name }) => {

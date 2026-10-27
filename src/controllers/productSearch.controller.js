@@ -22,6 +22,12 @@ export const getAggregatedProducts = async (req, res, next) => {
       success: true,
       message: "Products fetched successfully",
       data,
+      quota: req.scrapeQuota || {
+        limit: 2,
+        used: 1,
+        remaining: 1,
+        plan: "Basic",
+      },
     });
   } catch (error) {
     next(error);
