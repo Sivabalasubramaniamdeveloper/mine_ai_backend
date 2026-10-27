@@ -17,7 +17,15 @@ export const getPriceComparison = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: "Price comparison fetched successfully",
-      data: result,
+      data: {
+        ...result,
+        quota: req.priceQuota || {
+          limit: 5,
+          used: 1,
+          remaining: 4,
+          plan: "Basic",
+        },
+      },
     });
   } catch (error) {
     next(error);

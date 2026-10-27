@@ -80,3 +80,48 @@ export const authenticate = async (req, res, next) => {
     next(error);
   }
 };
+
+export const optionalAuthenticate = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      req.user = null;
+      return next();
+    }
+
+    const token = authHeader.substring(7);
+    if (!token) {
+      req.user = null;
+      return next();
+    }
+
+    const {
+      data: { user },
+      error,
+    } = await supabaseAuth.auth.getUser(token);
+
+    if (error || !user) {
+      // Check for custom 1-week fallback token
+      try {
+        const parts = token.split(".");
+        if (parts.length === 3) {
+          const payload = JSON.parse(
+            Buffer.from(parts[1], "base64").toString("utf8")
+          );
+          if (payload.sub) {
+            req.user = { id: payload.sub, email: payload.email, ...payload };
+            return next();
+          }
+        }
+      } catch (_) {}
+      req.user = null;
+      return next();
+    }
+
+    req.user = user;
+    next();
+  } catch (_) {
+    req.user = null;
+    next();
+  }
+};
