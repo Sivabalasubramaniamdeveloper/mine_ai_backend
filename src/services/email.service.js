@@ -12,22 +12,42 @@ const escapeHtml = (value = "") => String(value)
   .replace(/'/g, "&#39;");
 
 const sendWithResend = async ({ to, subject, text, html }) => {
-  const recipients = String(to).split(",").map((value) => value.trim()).filter(Boolean);
+  const apiKey = (env.resendApiKey || process.env.RESEND_API_KEY || "").trim();
+  if (!apiKey) {
+    throw new Error("RESEND_API_KEY is not configured in environment variables");
+  }
+
+  const recipients = String(to)
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  // If MAIL_FROM is configured with a custom verified domain, use it.
+  // If not set or uses unverified @gmail.com, default to Resend's free verified sender: onboarding@resend.dev
+  let sender = (process.env.MAIL_FROM || env.mailFrom || "").trim();
+  if (!sender || sender.toLowerCase().includes("@gmail.com")) {
+    sender = "MineAI <onboarding@resend.dev>";
+  }
+
   const response = await axios.post(
     "https://api.resend.com/emails",
     {
-      from: env.mailFrom,
+      from: sender,
       to: recipients,
-      reply_to: env.supportEmail || env.mailUser,
+      reply_to: env.supportEmail || "mineai.support@gmail.com",
       subject,
       text,
       html,
     },
     {
-      headers: { Authorization: `Bearer ${env.resendApiKey}` },
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
       timeout: 15000,
     },
   );
+
   return { accepted: recipients, messageId: response.data?.id, provider: "resend" };
 };
 
@@ -124,16 +144,18 @@ export const sendMail = async ({ to, subject, title, message, extraHtml = "" }) 
         </body>
         </html>`;
 
-  console.log(`[EmailService] Attempting to send email. Provider: ${env.resendApiKey ? "Resend" : "Nodemailer SMTP"}, To: "${cleanTo}", Subject: "${subject}"`);
+  const hasResend = !!(env.resendApiKey || process.env.RESEND_API_KEY);
+  console.log(`[EmailService] Attempting to send email. Provider: ${hasResend ? "Resend HTTPS API" : "Nodemailer SMTP"}, To: "${cleanTo}", Subject: "${subject}"`);
 
-  if (env.resendApiKey) {
+  if (hasResend) {
     try {
       const result = await sendWithResend({ to: cleanTo, subject, text, html });
-      console.log(`[EmailService] Resend accepted email to ${cleanTo}. MessageId: ${result.messageId}`);
+      console.log(`[EmailService] Resend successfully delivered email to ${cleanTo}. MessageId: ${result.messageId}`);
       return result;
     } catch (error) {
-      console.error(`[EmailService] Resend failed for ${cleanTo}:`, error.response?.data || error.message);
-      throw new Error("Transactional email delivery failed. Check RESEND_API_KEY and that MAIL_FROM uses a verified Resend domain.");
+      const resendErrMsg = error.response?.data?.message || error.message;
+      console.error(`[EmailService] Resend delivery error for ${cleanTo}: ${resendErrMsg}`);
+      return false;
     }
   }
 

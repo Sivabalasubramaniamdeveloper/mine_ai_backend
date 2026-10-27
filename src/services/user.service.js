@@ -1,4 +1,5 @@
 import supabase from "../config/supabase.js";
+import env from "../config/env.js";
 import {
   getUserProfileById,
   updateUserProfile,
