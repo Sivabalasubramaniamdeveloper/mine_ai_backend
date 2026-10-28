@@ -3,7 +3,6 @@ import supabaseAuth from "../config/supabase-auth.js";
 import env from "../config/env.js";
 import * as authService from "./auth.service.js";
 import * as ticketService from "./ticket.service.js";
-import { sendPlanChangedEmail } from "./email.service.js";
 
 const ADMIN_EMAILS = [
   "sivabala.lumina@gmail.com",
@@ -148,15 +147,6 @@ export const updateUserPlan = async (userId, planId) => {
     .single();
 
   if (error) throw new Error(error.message);
-
-  // Send plan update notification email to registered user via Resend
-  if (data?.email) {
-    const planName = data.plans?.name || "Updated Plan";
-    console.log(`[AdminService] Sending plan update email to ${data.email} via Resend (${planName})`);
-    void sendPlanChangedEmail(data.email, planName).catch((err) =>
-      console.error(`[AdminService] Plan update email to ${data.email} failed:`, err.message)
-    );
-  }
 
   return data;
 };

@@ -6,7 +6,6 @@ import {
   getPlanCatalog,
   assignUserPlan,
 } from "../repositories/user.repository.js";
-import { sendPlanChangedEmail } from "./email.service.js";
 
 import { getUserCreditsStatus } from "./credit.service.js";
 
@@ -138,15 +137,6 @@ export const updateMyPlan = async (userId, planId, authEmail = null) => {
   }
 
   console.log(`[UserService] Plan changed to "${planName}" for user ${userId}. Target email: "${targetEmail}"`);
-
-  if (targetEmail && targetEmail.includes("@")) {
-    console.log(`[UserService] Sending plan changed email to user: "${targetEmail}" via Resend`);
-    void sendPlanChangedEmail(targetEmail, planName).catch((error) =>
-      console.error(`[UserService] Could not send plan change email to ${targetEmail}:`, error.message),
-    );
-  } else {
-    console.warn(`[UserService] No email address found for user ${userId}; skipping plan change email.`);
-  }
 
   return user;
 };

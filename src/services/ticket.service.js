@@ -2,7 +2,6 @@ import fs from "fs";
 import path from "path";
 import supabase from "../config/supabase.js";
 import env from "../config/env.js";
-import { sendAdminMail, sendTicketDetailsToUser } from "./email.service.js";
 import fcmService from "./fcm.service.js";
 
 const DATA_DIR = path.resolve(process.cwd(), "data");
@@ -81,42 +80,6 @@ export const createTicket = async ({
   if (existingIdx === -1) {
     localList.unshift(ticketData);
     writeLocalTickets(localList);
-  }
-
-  // 3. Dispatch Full Ticket Details to User via Resend (from admin side)
-  try {
-    await sendTicketDetailsToUser(ticketData);
-    console.log(`[Ticket Service] Ticket confirmation email dispatched to user ${ticketData.user_email} via Resend.`);
-  } catch (userMailErr) {
-    console.error("[Ticket Service] Failed to send ticket confirmation to user:", userMailErr.message);
-  }
-
-  // 4. Notify Admin Team via Resend
-  try {
-    const adminEmail = env.supportEmail || env.mailUser || "mineai.support@gmail.com";
-    const extraHtml = `
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:16px 0;">
-        <p style="margin:4px 0;"><strong>Ticket ID:</strong> ${ticketId}</p>
-        <p style="margin:4px 0;"><strong>User:</strong> ${ticketData.user_name} (${ticketData.user_email})</p>
-        <p style="margin:4px 0;"><strong>Module:</strong> ${ticketData.module.toUpperCase()}</p>
-        <p style="margin:4px 0;"><strong>Category:</strong> ${ticketData.category}</p>
-        <p style="margin:4px 0;"><strong>Priority:</strong> <span style="color:${priority === "high" || priority === "urgent" ? "#dc2626" : "#2563eb"}">${ticketData.priority.toUpperCase()}</span></p>
-        <div style="margin-top:12px;padding:12px;background:#ffffff;border-radius:8px;border:1px solid #cbd5e1;">
-          <p style="margin:0 0 6px 0;font-weight:600;">Description:</p>
-          <p style="margin:0;white-space:pre-wrap;">${description}</p>
-        </div>
-      </div>
-    `;
-
-    await sendAdminMail({
-      to: adminEmail,
-      subject: `[MineAI Support Ticket ${ticketId}] Issue in ${ticketData.module}: ${subject}`,
-      title: `New Support Issue Reported: ${subject}`,
-      message: `A user reported an issue with module [${ticketData.module}].\n\nTicket ID: ${ticketId}\nPriority: ${ticketData.priority}\nUser: ${ticketData.user_email}`,
-      extraHtml,
-    });
-  } catch (mailErr) {
-    console.error("Failed to send admin notification email:", mailErr.message);
   }
 
   // Send push notification confirmation to user
