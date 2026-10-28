@@ -63,7 +63,9 @@ export const sendAdminMail = async ({ to, subject, title, message, extraHtml = "
   const cleanTo = to.trim();
   const safeTitle = escapeHtml(title);
   const safeMessage = escapeHtml(message);
-  const text = `${String(title)}\n\n${String(message)}\n\nMineAI Support: ${env.supportEmail || "mineai.support@gmail.com"}`;
+  const senderEmail = env.mailUser || "mineai.support@gmail.com";
+  const senderFrom = env.mailFrom || `MineAI <${senderEmail}>`;
+  const text = `${String(title)}\n\n${String(message)}\n\nMineAI Support: ${senderEmail}`;
   const html = `
         <!DOCTYPE html>
         <html lang="en">
@@ -80,20 +82,55 @@ export const sendAdminMail = async ({ to, subject, title, message, extraHtml = "
             ${extraHtml}
             <div style="background:#f1f5f9;border-left:4px solid #3b82f6;padding:10px 14px;border-radius:6px;margin:20px 0;"><p style="margin:0;font-size:12px;color:#475569;line-height:1.5;"><strong>Spam Folder Notice:</strong> If this email arrived in Spam, please mark it as Not Spam.</p></div>
             <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;" />
-            <p style="color:#64748b;font-size:12px;margin:0;">MineAI Support: <a href="mailto:${env.supportEmail || "mineai.support@gmail.com"}" style="color:#2357d8;text-decoration:none;">${env.supportEmail || "mineai.support@gmail.com"}</a></p>
+            <p style="color:#64748b;font-size:12px;margin:0;">MineAI Support: <a href="mailto:${senderEmail}" style="color:#2357d8;text-decoration:none;">${senderEmail}</a></p>
           </div>
         </body>
         </html>`;
 
-  console.log(`[AdminEmailService] Dispatching email via Resend to "${cleanTo}", Subject: "${subject}"`);
+  // 1. Attempt delivery via Resend if available
+  const hasResend = !!(env.resendApiKey || process.env.RESEND_API_KEY);
+  if (hasResend) {
+    try {
+      console.log(`[AdminEmailService] Attempting delivery via Resend to "${cleanTo}", Subject: "${subject}"`);
+      const result = await sendWithResend({ to: cleanTo, subject, text, html });
+      console.log(`[AdminEmailService] Successfully sent via Resend. MessageId: ${result.messageId}`);
+      return result;
+    } catch (resendErr) {
+      const resendErrMsg = resendErr.response?.data?.message || resendErr.message;
+      console.warn(`[AdminEmailService] Resend delivery skipped for ${cleanTo} (${resendErrMsg}). Delivering directly from ${senderEmail} via Gmail.`);
+    }
+  }
+
+  // 2. Direct delivery strictly from mineai.support@gmail.com
+  const client = getTransporter();
+  if (!client) {
+    console.error(`[AdminEmailService] Could not initialize mail transporter for ${senderEmail}`);
+    throw new Error(`Email sending failed: No mail transport available to dispatch from ${senderEmail}`);
+  }
+
   try {
-    const result = await sendWithResend({ to: cleanTo, subject, text, html });
-    console.log(`[AdminEmailService] Successfully sent via Resend. MessageId: ${result.messageId}`);
-    return result;
-  } catch (error) {
-    const resendErrMsg = error.response?.data?.message || error.message;
-    console.error(`[AdminEmailService] Resend send error for ${cleanTo}: ${resendErrMsg}`);
-    throw new Error(`Resend error: ${resendErrMsg}`);
+    const msgId = `<${Date.now()}.${Math.random().toString(36).substring(2, 10)}@mineai.app>`;
+    const info = await client.sendMail({
+      from: senderFrom,
+      sender: senderEmail,
+      replyTo: senderEmail,
+      to: cleanTo,
+      subject,
+      text,
+      messageId: msgId,
+      headers: {
+        "X-Mailer": "MineAI Email Engine",
+        "X-Priority": "3",
+        "Importance": "Normal",
+      },
+      html,
+    });
+
+    console.log(`[AdminEmailService] Successfully sent email from ${senderEmail} to ${cleanTo}. MessageId: ${info.messageId}`);
+    return { accepted: [cleanTo], messageId: info.messageId, provider: "smtp" };
+  } catch (smtpErr) {
+    console.error(`[AdminEmailService] Failed to send email to ${cleanTo}:`, smtpErr.message);
+    throw smtpErr;
   }
 };
 
