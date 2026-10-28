@@ -1,5 +1,22 @@
 import * as authService from "../services/auth.service.js";
-import { sendMail, verifyTransporter } from "../services/email.service.js";
+import { sendMail, verifyTransporter, sendWelcomeEmails } from "../services/email.service.js";
+
+// Dispatches a welcome email via Resend when a user first signs up
+export const sendSignupWelcome = async (req, res, next) => {
+  try {
+    const { email, full_name } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email is required" });
+    }
+    await sendWelcomeEmails(email, full_name);
+    return res.status(200).json({
+      success: true,
+      message: "Welcome email dispatched successfully via Resend",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 // Authenticates credentials and returns Supabase's access and refresh tokens.
 export const login = async (req, res, next) => {

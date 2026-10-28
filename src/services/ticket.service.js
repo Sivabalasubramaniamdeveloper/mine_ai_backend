@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import supabase from "../config/supabase.js";
 import env from "../config/env.js";
-import { sendMail } from "./email.service.js";
+import { sendAdminMail, sendTicketDetailsToUser } from "./email.service.js";
 import fcmService from "./fcm.service.js";
 
 const DATA_DIR = path.resolve(process.cwd(), "data");
@@ -83,9 +83,17 @@ export const createTicket = async ({
     writeLocalTickets(localList);
   }
 
-  // 3. Notify Admin Team via Email
+  // 3. Dispatch Full Ticket Details to User via Resend (from admin side)
   try {
-    const adminEmail = env.supportEmail || env.mailUser || "admin@mineai.app";
+    await sendTicketDetailsToUser(ticketData);
+    console.log(`[Ticket Service] Ticket confirmation email dispatched to user ${ticketData.user_email} via Resend.`);
+  } catch (userMailErr) {
+    console.error("[Ticket Service] Failed to send ticket confirmation to user:", userMailErr.message);
+  }
+
+  // 4. Notify Admin Team via Resend
+  try {
+    const adminEmail = env.supportEmail || env.mailUser || "mineai.support@gmail.com";
     const extraHtml = `
       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:16px 0;">
         <p style="margin:4px 0;"><strong>Ticket ID:</strong> ${ticketId}</p>
@@ -100,7 +108,7 @@ export const createTicket = async ({
       </div>
     `;
 
-    await sendMail({
+    await sendAdminMail({
       to: adminEmail,
       subject: `[MineAI Support Ticket ${ticketId}] Issue in ${ticketData.module}: ${subject}`,
       title: `New Support Issue Reported: ${subject}`,

@@ -1,0 +1,71 @@
+{
+  "chatflow": {
+    "name": "MineAI Official Assistant",
+    "description": "RAG AI Assistant powered by MineAI comprehensive knowledge base",
+    "nodes": [
+      {
+        "name": "pdfFile",
+        "label": "PDF File Loader",
+        "inputs": {
+          "pdfFile": "MineAI_Complete_App_Documentation.pdf",
+          "usage": "MineAI App Documentation & Specs"
+        }
+      },
+      {
+        "name": "recursiveCharacterTextSplitter",
+        "label": "Recursive Character Text Splitter",
+        "inputs": {
+          "chunkSize": 1000,
+          "chunkOverlap": 200,
+          "separators": [
+            "\\n\\n",
+            "\\n",
+            " ",
+            ""
+          ]
+        }
+      },
+      {
+        "name": "googleGenerativeAIEmbeddings",
+        "label": "Google Generative AI Embeddings",
+        "inputs": {
+          "modelName": "text-embedding-004"
+        }
+      },
+      {
+        "name": "memoryVectorStore",
+        "label": "In-Memory / Supabase Vector Store",
+        "inputs": {
+          "topK": 4
+        }
+      },
+      {
+        "name": "chatGoogleGenerativeAI",
+        "label": "ChatGoogleGenerativeAI",
+        "inputs": {
+          "modelName": "gemini-1.5-flash",
+          "temperature": 0.2
+        }
+      },
+      {
+        "name": "bufferMemory",
+        "label": "Buffer Memory",
+        "inputs": {
+          "memoryKey": "chat_history"
+        }
+      },
+      {
+        "name": "conversationalRetrievalQAChain",
+        "label": "Conversational Retrieval QA Chain",
+        "inputs": {
+          "systemMessage": "You are the official MineAI AI Assistant. Answer all user questions using the retrieved documentation context."
+        }
+      }
+    ],
+    "apiEndpoint": "http://localhost:3000/api/v1/prediction/<CHATFLOW_ID>",
+    "sampleRequest": {
+      "question": "How do I use Voice Tasks in MineAI?",
+      "chatId": "session-123"
+    }
+  }
+}
